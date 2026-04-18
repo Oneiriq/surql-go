@@ -11,8 +11,8 @@ on:
       - 'release/**'
 
 jobs:
-  quality:
-    name: Lint and Test
+  lint:
+    name: golangci-lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +23,28 @@ jobs:
           go-version: '1.26'
           cache-dependency-path: go.sum
 
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+  quality:
+    name: Lint and Test (${{ matrix.os }}, Go ${{ matrix.go }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        go: ['1.26', 'stable']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache-dependency-path: go.sum
+
       - name: Format check
         run: |
           unformatted=$(gofmt -l .)
@@ -31,6 +53,7 @@ jobs:
             echo "$unformatted"
             exit 1
           fi
+        shell: bash
 
       - name: Vet
         run: go vet ./...
@@ -83,3 +106,25 @@ jobs:
       - name: Stop SurrealDB
         if: always()
         run: docker stop surrealdb || true
+
+  goreleaser-check:
+    name: goreleaser check
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.base_ref, 'release/')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: go.sum
+
+      - name: goreleaser check
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: check

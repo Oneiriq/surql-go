@@ -4,8 +4,9 @@ import (
 	"context"
 	"sync"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
 	surrealdb "github.com/surrealdb/surrealdb.go"
+
+	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
 )
 
 // TransactionState enumerates the lifecycle states of a Transaction.

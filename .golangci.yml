@@ -1,38 +1,64 @@
+version: "2"
 run:
-  timeout: 5m
   go: "1.26"
-
 linters:
-  disable-all: true
+  default: none
   enable:
     - errcheck
-    - govet
-    - staticcheck
-    - ineffassign
-    - unused
-    - gofmt
-    - goimports
-    - misspell
-    - revive
-    - unconvert
     - gocritic
     - gosec
-
-linters-settings:
-  revive:
+    - govet
+    - ineffassign
+    - misspell
+    - revive
+    - staticcheck
+    - unconvert
+    - unused
+  settings:
+    gosec:
+      excludes:
+        - G104
+        # Integer conversions in numeric coercion helpers are deliberate
+        # (SurrealDB returns untyped numerics that we normalise to int64).
+        - G115
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: var-naming
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
     rules:
-      - name: exported
-      - name: package-comments
-      - name: var-naming
-  gosec:
-    excludes:
-      - G104 # errcheck handles
-  goimports:
-    local-prefixes: github.com/albedosehen/surql-go
-
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - gosec
-        - errcheck
+      - linters:
+          - errcheck
+          - gosec
+        path: _test\.go
+      # Established public API names (e.g. QueryResult[T], SchemaRegistry,
+      # MigrationState) intentionally repeat their package name. Renaming
+      # them would be a breaking change for downstream consumers.
+      - linters:
+          - revive
+        text: "^exported: (type|func) name will be used as"
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/albedosehen/surql-go
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

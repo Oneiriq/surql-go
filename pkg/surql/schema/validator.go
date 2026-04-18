@@ -321,14 +321,12 @@ func ValidateAccess(a AccessDefinition) *ValidationReport {
 				Table:    a.Name,
 				Message:  "RECORD access requires a record configuration",
 			})
-		} else {
-			if a.Record.Signup == "" && a.Record.Signin == "" {
-				report.Add(ValidationResult{
-					Severity: SeverityWarning,
-					Table:    a.Name,
-					Message:  "RECORD access declares neither SIGNUP nor SIGNIN",
-				})
-			}
+		} else if a.Record.Signup == "" && a.Record.Signin == "" {
+			report.Add(ValidationResult{
+				Severity: SeverityWarning,
+				Table:    a.Name,
+				Message:  "RECORD access declares neither SIGNUP nor SIGNIN",
+			})
 		}
 		if a.JWT != nil {
 			report.Add(ValidationResult{

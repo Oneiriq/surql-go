@@ -88,8 +88,7 @@ func UpsertTyped[T any](ctx context.Context, client *connection.DatabaseClient, 
 // exactly the JSON payload the wire would carry.
 func toJSONMap[T any](v T) (map[string]any, error) {
 	// map[string]any short-circuit: preserves nil vs empty semantics.
-	switch m := any(v).(type) {
-	case map[string]any:
+	if m, ok := any(v).(map[string]any); ok {
 		if m == nil {
 			return nil, surqlerrors.New(surqlerrors.ErrValidation, "data cannot be nil")
 		}
