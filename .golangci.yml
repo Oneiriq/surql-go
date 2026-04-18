@@ -1,6 +1,9 @@
 version: "2"
 run:
-  go: "1.26"
+  # golangci-lint v2.1.x is still built with Go 1.24 and refuses code
+  # targeting Go 1.26. Lint against 1.24 semantics -- our code stays
+  # within that level.
+  go: "1.24"
 linters:
   default: none
   enable:
