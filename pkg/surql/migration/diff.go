@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
 	"github.com/albedosehen/surql-go/pkg/surql/schema"
@@ -32,16 +33,29 @@ var safeDefaultPattern = regexp.MustCompile(
 		`)$`,
 )
 
-// SchemaSnapshot is a whole-schema view consumed by DiffSchemas. It carries
-// the ordered set of tables and edges that make up a schema revision (code
-// side) or the remote database state.
+// SchemaSnapshot is a point-in-time view of a SurrealDB schema.
 //
-// The snapshot deliberately mirrors the shape of surql-py's implicit "list of
-// tables + list of edges" contract rather than introducing a new Python
-// concept; it simply gives the Go port a concrete type to compare against.
+// In its simplest form (empty Version / Timestamp / Description / Accesses)
+// it is the whole-schema comparison input consumed by DiffSchemas; the Tables
+// and Edges slices drive the code-vs-db comparison.
+//
+// When used via the versioning API (CreateSnapshot / StoreSnapshot /
+// LoadSnapshot) the remaining fields record snapshot provenance:
+//
+//   - Version identifies the snapshot (YYYYMMDD_HHMMSS timestamp).
+//   - Timestamp is the UTC creation time.
+//   - Description is a human-readable summary.
+//   - Accesses holds DEFINE ACCESS definitions present at this point.
+//
+// The type is JSON-serialisable; fields with no semantic content are emitted
+// with `omitempty` so the DiffSchemas contract is preserved.
 type SchemaSnapshot struct {
-	Tables []schema.TableDefinition
-	Edges  []schema.EdgeDefinition
+	Version     string                    `json:"version,omitempty"`
+	Timestamp   time.Time                 `json:"timestamp,omitempty"`
+	Description string                    `json:"description,omitempty"`
+	Tables      []schema.TableDefinition  `json:"tables,omitempty"`
+	Edges       []schema.EdgeDefinition   `json:"edges,omitempty"`
+	Accesses    []schema.AccessDefinition `json:"accesses,omitempty"`
 }
 
 // validateEventExpression rejects event condition or action expressions that
