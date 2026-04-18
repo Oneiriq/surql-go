@@ -6,6 +6,7 @@ package connection
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -218,10 +219,16 @@ func TestIntegration_TransactionRollback(t *testing.T) {
 		t.Fatalf("state after rollback: %v", tx.State())
 	}
 
-	// Expect no records after rollback.
+	// Expect no records (or table not yet materialised) after rollback.
 	res, err := client.Select(ctx, "surqlgo_txn_rollback")
 	if err != nil {
-		t.Fatalf("Select: %v", err)
+		// On SurrealDB v3+, selecting from a never-materialised table returns
+		// "table does not exist" instead of an empty result. That is equally
+		// valid evidence that the rollback worked.
+		if !strings.Contains(err.Error(), "does not exist") {
+			t.Fatalf("Select: %v", err)
+		}
+		return
 	}
 	if records, ok := res.([]any); ok && len(records) > 0 {
 		t.Fatalf("rollback did not discard data: %+v", records)
