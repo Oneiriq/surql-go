@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
 )
 
 // CoerceDatetime converts a SurrealDB ISO-8601 datetime string into a

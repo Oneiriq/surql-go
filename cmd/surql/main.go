@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/albedosehen/surql-go/pkg/surql"
+	"github.com/Oneiriq/surql-go/pkg/surql"
 )
 
 // build-time populated by goreleaser via -ldflags.

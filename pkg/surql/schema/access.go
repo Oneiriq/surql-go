@@ -3,7 +3,7 @@ package schema
 import (
 	"strings"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
 )
 
 // AccessType enumerates the access control types supported by DEFINE ACCESS.

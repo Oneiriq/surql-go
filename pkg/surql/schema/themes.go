@@ -3,7 +3,7 @@ package schema
 import (
 	"sort"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
 )
 
 // ColorScheme is the base color palette used across visualization themes.

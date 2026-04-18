@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/albedosehen/surql-go/pkg/surql/connection"
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
+	"github.com/Oneiriq/surql-go/pkg/surql/connection"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
 )
 
 // ExecuteOptions tunes MigrateUp / MigrateDown behaviour.

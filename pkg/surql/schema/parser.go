@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
 )
 
 // DatabaseInfo is the parsed shape of an INFO FOR DB response. Tables, Edges,

@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/albedosehen/surql-go/pkg/surql/connection"
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
+	"github.com/Oneiriq/surql-go/pkg/surql/connection"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
 )
 
 // CreateTyped creates a record from data and returns a validated T. The

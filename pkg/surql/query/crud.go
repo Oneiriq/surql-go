@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/albedosehen/surql-go/pkg/surql/connection"
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
-	"github.com/albedosehen/surql-go/pkg/surql/types"
+	"github.com/Oneiriq/surql-go/pkg/surql/connection"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
+	"github.com/Oneiriq/surql-go/pkg/surql/types"
 )
 
 // CreateRecord inserts a new record into table and returns the server

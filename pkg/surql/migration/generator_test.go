@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
-	"github.com/albedosehen/surql-go/pkg/surql/schema"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
+	"github.com/Oneiriq/surql-go/pkg/surql/schema"
 )
 
 // withFrozenClock overrides the generator's clock for the duration of a test.

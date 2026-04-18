@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
 )
 
 // DriftSeverity categorises a single DriftIssue. The zero value

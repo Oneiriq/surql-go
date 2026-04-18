@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
 )
 
 func TestNewDatabaseClient_ValidatesConfig(t *testing.T) {

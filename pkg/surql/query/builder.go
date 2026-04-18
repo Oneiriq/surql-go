@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
-	"github.com/albedosehen/surql-go/pkg/surql/types"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
+	"github.com/Oneiriq/surql-go/pkg/surql/types"
 )
 
 // Operation tags the high-level SurrealQL statement a Query produces.
