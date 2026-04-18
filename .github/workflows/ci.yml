@@ -11,16 +11,44 @@ on:
       - 'release/**'
 
 jobs:
-  quality:
-    name: Lint and Test
+  lint:
+    name: golangci-lint
     runs-on: ubuntu-latest
+    # golangci-lint v2.1.x is built with Go 1.24 and panics ("package
+    # requires newer Go version go1.26") when linting a module with
+    # `go 1.26` in go.mod. Marked continue-on-error until a
+    # golangci-lint release with Go 1.26 support ships. `go vet` in the
+    # quality matrix still enforces correctness.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.24'
+          cache-dependency-path: go.sum
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.1.6
+
+  quality:
+    name: Lint and Test (${{ matrix.os }}, Go ${{ matrix.go }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        go: ['1.26', 'stable']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
           cache-dependency-path: go.sum
 
       - name: Format check
@@ -31,6 +59,7 @@ jobs:
             echo "$unformatted"
             exit 1
           fi
+        shell: bash
 
       - name: Vet
         run: go vet ./...
@@ -83,3 +112,25 @@ jobs:
       - name: Stop SurrealDB
         if: always()
         run: docker stop surrealdb || true
+
+  goreleaser-check:
+    name: goreleaser check
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.base_ref, 'release/')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: go.sum
+
+      - name: goreleaser check
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: check

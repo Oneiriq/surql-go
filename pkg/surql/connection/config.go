@@ -201,9 +201,7 @@ func LoadConfigFromEnv() (ConnectionConfig, error) {
 // LoadConfigFromEnvWithPrefix is LoadConfigFromEnv with a custom prefix
 // (e.g. "SURQL_PRIMARY_" for named connections).
 func LoadConfigFromEnvWithPrefix(prefix string) (ConnectionConfig, error) {
-	return LoadConfigFromSource(prefix, func(key string) (string, bool) {
-		return os.LookupEnv(key)
-	})
+	return LoadConfigFromSource(prefix, os.LookupEnv)
 }
 
 // LoadConfigFromSource builds a config from an arbitrary key lookup.

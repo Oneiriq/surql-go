@@ -735,7 +735,7 @@ func TestDiffPermissionsMultipleStableOrder(t *testing.T) {
 	iCreate := strings.Index(sql, "FOR CREATE")
 	iSelect := strings.Index(sql, "FOR SELECT")
 	iUpdate := strings.Index(sql, "FOR UPDATE")
-	if !(iCreate < iSelect && iSelect < iUpdate) {
+	if iCreate >= iSelect || iSelect >= iUpdate {
 		t.Errorf("expected sorted order, got: %s", sql)
 	}
 }
@@ -944,7 +944,7 @@ func TestDiffEdgesBothNil(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if diffs != nil && len(diffs) != 0 {
+	if len(diffs) != 0 {
 		t.Errorf("expected empty, got %v", diffs)
 	}
 }

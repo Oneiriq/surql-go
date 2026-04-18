@@ -7,8 +7,9 @@ import (
 	"sync"
 	"time"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
 	surrealdb "github.com/surrealdb/surrealdb.go"
+
+	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
 )
 
 // DatabaseClient is a high-level wrapper around the official SurrealDB Go SDK

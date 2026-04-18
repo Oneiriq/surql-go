@@ -87,7 +87,9 @@ func StoreSnapshot(snapshot SchemaSnapshot, path string) error {
 			"failed to marshal snapshot %q", snapshot.Version)
 	}
 
-	if err := os.WriteFile(target, data, 0o644); err != nil {
+	// Snapshots are intended to be world-readable (e.g. committed to the
+	// repository or shared between developers); 0644 is deliberate here.
+	if err := os.WriteFile(target, data, 0o644); err != nil { //nolint:gosec // G306: snapshots are intentionally world-readable
 		return surqlerrors.Wrapf(surqlerrors.ErrSerialization, err,
 			"failed to write snapshot file %q", target)
 	}
