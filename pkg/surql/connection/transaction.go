@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
-	surrealdb "github.com/surrealdb/surrealdb.go"
 )
 
 // TransactionState enumerates the lifecycle states of a Transaction.
@@ -38,34 +37,32 @@ func (s TransactionState) String() string {
 	}
 }
 
-// Transaction represents a SurrealDB interactive transaction (WebSocket only).
-// It delegates to the official SDK's *surrealdb.Transaction under the hood.
+// Transaction represents a SurrealDB transaction scoped to a single client
+// connection. It issues BEGIN/COMMIT/CANCEL as text statements via the
+// client's Query RPC, which works on every SurrealDB release (unlike the
+// SDK's interactive surrealdb.Transaction helper, which requires >= v3).
 //
 // A Transaction must be finalised exactly once through Commit or Rollback.
 // Calling either after the transaction has been finalised returns
 // ErrTransaction.
 type Transaction struct {
 	client *DatabaseClient
-	tx     *surrealdb.Transaction
 
 	mu    sync.Mutex
 	state TransactionState
 }
 
-// Begin opens a new interactive transaction bound to the client's underlying
-// connection. The context controls the BEGIN RPC.
+// Begin opens a new transaction bound to the client's underlying connection
+// by executing `BEGIN TRANSACTION`. The context controls the RPC.
 func (c *DatabaseClient) Begin(ctx context.Context) (*Transaction, error) {
-	db, err := c.requireDB()
-	if err != nil {
+	if _, err := c.requireDB(); err != nil {
 		return nil, surqlerrors.Wrap(surqlerrors.ErrTransaction, "cannot begin transaction", err)
 	}
-	tx, err := db.Begin(ctx)
-	if err != nil {
+	if _, err := c.QueryWithVars(ctx, "BEGIN TRANSACTION;", nil); err != nil {
 		return nil, surqlerrors.Wrap(surqlerrors.ErrTransaction, "begin failed", err)
 	}
 	return &Transaction{
 		client: c,
-		tx:     tx,
 		state:  TransactionActive,
 	}, nil
 }
@@ -82,7 +79,8 @@ func (t *Transaction) IsActive() bool {
 	return t.State() == TransactionActive
 }
 
-// Commit finalises the transaction, persisting all statements.
+// Commit finalises the transaction, persisting all statements, by issuing
+// `COMMIT TRANSACTION`.
 func (t *Transaction) Commit(ctx context.Context) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -90,7 +88,7 @@ func (t *Transaction) Commit(ctx context.Context) error {
 		return surqlerrors.Newf(surqlerrors.ErrTransaction,
 			"cannot commit transaction in state %q", t.state)
 	}
-	if err := t.tx.Commit(ctx); err != nil {
+	if _, err := t.client.QueryWithVars(ctx, "COMMIT TRANSACTION;", nil); err != nil {
 		t.state = TransactionFailed
 		return surqlerrors.Wrap(surqlerrors.ErrTransaction, "commit failed", err)
 	}
@@ -98,7 +96,8 @@ func (t *Transaction) Commit(ctx context.Context) error {
 	return nil
 }
 
-// Rollback discards all statements issued against the transaction.
+// Rollback discards all statements issued against the transaction by
+// executing `CANCEL TRANSACTION`.
 // Idempotent: calling Rollback on a finalised transaction returns ErrTransaction.
 func (t *Transaction) Rollback(ctx context.Context) error {
 	t.mu.Lock()
@@ -107,7 +106,7 @@ func (t *Transaction) Rollback(ctx context.Context) error {
 		return surqlerrors.Newf(surqlerrors.ErrTransaction,
 			"cannot rollback transaction in state %q", t.state)
 	}
-	if err := t.tx.Cancel(ctx); err != nil {
+	if _, err := t.client.QueryWithVars(ctx, "CANCEL TRANSACTION;", nil); err != nil {
 		t.state = TransactionFailed
 		return surqlerrors.Wrap(surqlerrors.ErrTransaction, "rollback failed", err)
 	}
@@ -130,21 +129,5 @@ func (t *Transaction) ExecuteWithVars(ctx context.Context, surql string, vars ma
 		return nil, surqlerrors.Newf(surqlerrors.ErrTransaction,
 			"cannot execute in transaction state %q", t.State())
 	}
-
-	results, err := surrealdb.Query[any](ctx, t.tx, surql, vars)
-	if err != nil {
-		return nil, mapQueryError(err)
-	}
-	if results == nil {
-		return []any{}, nil
-	}
-	out := make([]any, 0, len(*results))
-	for _, r := range *results {
-		out = append(out, map[string]any{
-			"status": r.Status,
-			"time":   r.Time,
-			"result": r.Result,
-		})
-	}
-	return out, nil
+	return t.client.QueryWithVars(ctx, surql, vars)
 }
