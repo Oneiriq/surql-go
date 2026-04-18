@@ -76,17 +76,27 @@ func RecordMigration(ctx context.Context, client *connection.DatabaseClient, ent
 		appliedAt = time.Now().UTC()
 	}
 
-	data := map[string]any{
+	// SurrealDB v3 rejects bare ISO strings for datetime-typed fields
+	// ("Expected `datetime` but found '...'"), so we cast explicitly via
+	// the SurrealQL `<datetime>` prefix inside a raw CREATE statement.
+	vars := map[string]any{
 		"version":     entry.Version,
 		"description": entry.Description,
 		"applied_at":  appliedAt.UTC().Format(time.RFC3339Nano),
 		"checksum":    entry.Checksum,
 	}
+	sql := "CREATE " + MigrationTableName + " SET " +
+		"version = $version, " +
+		"description = $description, " +
+		"applied_at = <datetime> $applied_at, " +
+		"checksum = $checksum"
 	if entry.ExecutionTimeMs != nil {
-		data["execution_time_ms"] = *entry.ExecutionTimeMs
+		vars["execution_time_ms"] = *entry.ExecutionTimeMs
+		sql += ", execution_time_ms = $execution_time_ms"
 	}
+	sql += ";"
 
-	if _, err := client.Create(ctx, MigrationTableName, data); err != nil {
+	if _, err := client.QueryWithVars(ctx, sql, vars); err != nil {
 		return surqlerrors.Wrapf(
 			surqlerrors.ErrMigrationHistory, err,
 			"failed to record migration %q", entry.Version,
