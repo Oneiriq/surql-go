@@ -160,7 +160,14 @@ func DeleteRecord(ctx context.Context, client *connection.DatabaseClient, table 
 	if err != nil {
 		return err
 	}
-	if _, err := client.Delete(ctx, target); err != nil {
+	// Use raw `DELETE <table:id>` -- the SDK's Delete treats its string
+	// target as a table name, which v3+ rejects when given "table:id".
+	// A "table does not exist" error is treated as a successful no-op to
+	// match v2 behaviour and the Python port.
+	if _, err := client.Query(ctx, "DELETE "+target+";"); err != nil {
+		if isTableMissingError(err) {
+			return nil
+		}
 		return err
 	}
 	return nil
