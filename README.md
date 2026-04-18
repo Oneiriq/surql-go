@@ -1,46 +1,77 @@
 # surql-go
 
-Code-first database toolkit for SurrealDB -- schema definitions, migrations, query building, typed CRUD.
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Go Version](https://img.shields.io/badge/go-1.26%2B-00ADD8)](https://go.dev/)
+[![SurrealDB](https://img.shields.io/badge/SurrealDB-2.0%2B-ff00a0)](https://surrealdb.com/)
 
-Go port of [`oneiriq-surql`](https://github.com/Oneiriq/surql-py) (Python) and [`@oneiriq/surql`](https://github.com/Oneiriq/surql) (TypeScript/Deno). Target: 1:1 feature parity.
+A code-first database toolkit for [SurrealDB](https://surrealdb.com/). Define schemas, generate migrations, build queries, and perform typed CRUD -- all from Go.
 
-Status: `0.1.0-dev` -- foundation under active port.
+## Features
 
-## Features (target parity)
-
-- Connection management (WebSocket/HTTP, pooling, retry, transactions, live queries)
-- Query builder (immutable, fluent, expressions, hints, batch operations, graph traversal)
-- Typed CRUD backed by `encoding/json` struct tags (create, read, update, merge, upsert, delete)
-- Schema DSL (tables, fields, edges, indexes, events, access)
-- Migrations (generator, executor, history, rollback, squash, versioning, watcher)
-- Cache (in-memory + optional Redis backend)
-- Orchestration (multi-environment deploy: sequential, parallel, rolling, canary)
-- CLI (`surql` binary) for migrate, schema, db, orchestrate
-
-## Install
-
-```bash
-go get github.com/albedosehen/surql-go
-```
-
-CLI:
-
-```bash
-go install github.com/albedosehen/surql-go/cmd/surql@latest
-```
+- **Code-First Migrations** - Schema changes defined in code with automatic migration generation (auto-diff + `.surql` file output with `-- @up` / `-- @down` sections)
+- **Type-Safe Query Builder** - Immutable fluent API with operator-typed `Where`, expression helpers, and `encoding/json` struct tags
+- **Vector Search** - HNSW and MTREE index support with 8 distance metrics and EFC/M tuning
+- **Graph Traversal** - Native SurrealDB graph features with edge relationships
+- **Schema Visualization** - Mermaid, GraphViz, and ASCII diagrams with theming
+- **CLI Tools** - Migrations, schema inspection, validation, database management *(planned)*
+- **Stdlib-First** - Minimal dependencies; stdlib `net/http` + official SurrealDB SDK *(planned)*
 
 ## Quick Start
 
-Under construction. Full API will mirror `surql-py` and `@oneiriq/surql`.
-
-## Development
-
-```bash
-make check    # fmt + vet + test
-make test     # run all tests
-make cover    # coverage report -> coverage.html
+```shell
+go get github.com/Oneiriq/surql-go
 ```
+
+With the CLI:
+
+```shell
+go install github.com/Oneiriq/surql-go/cmd/surql@latest
+```
+
+```go
+package main
+
+import (
+    "github.com/Oneiriq/surql-go/pkg/surql/schema"
+)
+
+func main() {
+    user, _ := schema.NewTableDefinition(
+        "user",
+        schema.WithMode(schema.TableModeSchemafull),
+        schema.WithFields(
+            schema.StringField("name"),
+            schema.StringField("email").WithAssertion("string::is::email($value)"),
+            schema.IntField("age").WithAssertion("$value >= 0 AND $value <= 150"),
+            schema.DatetimeField("created_at").WithDefault("time::now()").WithReadonly(true),
+        ),
+        schema.WithIndexes(schema.UniqueIndex("email_idx", []string{"email"})),
+    )
+    // ...
+}
+```
+
+## Documentation
+
+Full documentation at **[oneiriq.github.io/surql-go](https://oneiriq.github.io/surql-go/)**.
+
+## Requirements
+
+- Go 1.26+
+- SurrealDB 2.0+
 
 ## License
 
-Apache-2.0
+Apache License 2.0 - see [LICENSE](LICENSE).
+
+## Python / TypeScript / Rust
+
+- **Python**: [surql-py](https://github.com/Oneiriq/surql-py) -- the original, reference implementation (Python 3.12+).
+- **TypeScript / Deno / Node.js**: [surql](https://github.com/Oneiriq/surql) -- type-safe query builder and client.
+- **Rust**: [surql-rs](https://github.com/Oneiriq/surql-rs) -- Rust port of this library, sharing the same schema + migration model.
+
+## Support
+
+- Documentation: [oneiriq.github.io/surql-go](https://oneiriq.github.io/surql-go/)
+- Issues: [GitHub Issues](https://github.com/Oneiriq/surql-go/issues)
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
