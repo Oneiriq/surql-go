@@ -14,13 +14,18 @@ jobs:
   lint:
     name: golangci-lint
     runs-on: ubuntu-latest
+    # golangci-lint v2.1.x panics while analysing packages built with
+    # Go 1.26 (see upstream golangci/golangci-lint). Pin the Go toolchain
+    # used by the lint job to 1.24 until a v2 release that supports 1.26
+    # ships. Core correctness linting is still covered by `go vet` in
+    # the quality matrix.
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.24'
           cache-dependency-path: go.sum
 
       - name: golangci-lint
