@@ -63,6 +63,19 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
+// cleanupTable deletes all records in `table` and tolerates "table does
+// not exist" errors (SurrealDB v3+ surfaces these instead of treating the
+// missing table as a no-op). Use as a pre-test reset.
+func cleanupTable(t *testing.T, client *DatabaseClient, table string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err := client.Query(ctx, "REMOVE TABLE IF EXISTS "+table+";")
+	if err != nil {
+		t.Fatalf("pre-test cleanup (%s): %v", table, err)
+	}
+}
+
 func TestIntegration_ConnectAndSignin(t *testing.T) {
 	client, cleanup := newIntegrationClient(t)
 	defer cleanup()
@@ -90,9 +103,7 @@ func TestIntegration_CRUDRoundTrip(t *testing.T) {
 	defer cancel()
 
 	// Clean slate.
-	if _, err := client.Delete(ctx, "surqlgo_test_user"); err != nil {
-		t.Fatalf("pre-test cleanup Delete: %v", err)
-	}
+	cleanupTable(t, client, "surqlgo_test_user")
 
 	created, err := client.Create(ctx, "surqlgo_test_user", map[string]any{
 		"name": "alice",
@@ -152,9 +163,7 @@ func TestIntegration_TransactionCommit(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if _, err := client.Delete(ctx, "surqlgo_txn_commit"); err != nil {
-		t.Fatalf("pre-test cleanup: %v", err)
-	}
+	cleanupTable(t, client, "surqlgo_txn_commit")
 
 	tx, err := client.Begin(ctx)
 	if err != nil {
@@ -190,9 +199,7 @@ func TestIntegration_TransactionRollback(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if _, err := client.Delete(ctx, "surqlgo_txn_rollback"); err != nil {
-		t.Fatalf("pre-test cleanup: %v", err)
-	}
+	cleanupTable(t, client, "surqlgo_txn_rollback")
 
 	tx, err := client.Begin(ctx)
 	if err != nil {
@@ -231,9 +238,7 @@ func TestIntegration_LiveQueryReceivesChange(t *testing.T) {
 	table := "surqlgo_live_demo"
 
 	// Reset table.
-	if _, err := client.Delete(ctx, table); err != nil {
-		t.Fatalf("pre-test cleanup: %v", err)
-	}
+	cleanupTable(t, client, table)
 	if _, err := client.Query(ctx, "DEFINE TABLE "+table+";"); err != nil {
 		t.Fatalf("DEFINE TABLE: %v", err)
 	}
