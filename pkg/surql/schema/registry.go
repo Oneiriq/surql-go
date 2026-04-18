@@ -4,7 +4,7 @@ import (
 	"sort"
 	"sync"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
 )
 
 // SchemaRegistry is a thread-safe registry for code-defined table and edge

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
 )
 
 // writeFile is a small test helper that creates a file with the given body.

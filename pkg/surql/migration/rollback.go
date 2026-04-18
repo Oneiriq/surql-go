@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/albedosehen/surql-go/pkg/surql/connection"
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
+	"github.com/Oneiriq/surql-go/pkg/surql/connection"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
 )
 
 // RollbackSafety categorises the risk level of a rollback operation.

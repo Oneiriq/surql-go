@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
 )
 
 // ReturnFormat selects the data returned by a mutation.

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
 )
 
 func TestIndexHint_RendersUseAndForce(t *testing.T) {

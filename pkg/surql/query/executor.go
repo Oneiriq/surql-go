@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/albedosehen/surql-go/pkg/surql/connection"
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
+	"github.com/Oneiriq/surql-go/pkg/surql/connection"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
 )
 
 // ExecuteQuery renders q to SurrealQL and executes it against client. The

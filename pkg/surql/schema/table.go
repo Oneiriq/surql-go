@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
 )
 
 // TableMode enumerates the table schema modes.

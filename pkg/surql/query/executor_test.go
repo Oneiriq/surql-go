@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
 )
 
 func TestExecuteQuery_NilClient(t *testing.T) {

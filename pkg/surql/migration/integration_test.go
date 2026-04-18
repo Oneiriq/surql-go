@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/albedosehen/surql-go/pkg/surql/connection"
+	"github.com/Oneiriq/surql-go/pkg/surql/connection"
 )
 
 // getIntegrationURL reads the SurrealDB URL used by CI's integration job.

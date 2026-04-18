@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
-	"github.com/albedosehen/surql-go/pkg/surql/schema"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
+	"github.com/Oneiriq/surql-go/pkg/surql/schema"
 )
 
 // timestampLayout is the UTC timestamp layout used for migration versions.

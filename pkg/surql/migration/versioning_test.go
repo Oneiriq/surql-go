@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
-	"github.com/albedosehen/surql-go/pkg/surql/schema"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
+	"github.com/Oneiriq/surql-go/pkg/surql/schema"
 )
 
 // withSnapshotClock overrides snapshotClock for the duration of the test.

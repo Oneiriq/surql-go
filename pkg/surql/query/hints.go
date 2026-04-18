@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
 )
 
 // HintType is the category of a query hint, used to dedupe when MergeHints
