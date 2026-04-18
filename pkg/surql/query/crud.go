@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/albedosehen/surql-go/pkg/surql/connection"
 	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
@@ -56,6 +57,10 @@ func CreateRecords(ctx context.Context, client *connection.DatabaseClient, table
 // GetRecord fetches a single record by id. recordID may be a bare string
 // (combined with table to form `table:id`) or a types.RecordID (used
 // verbatim). Returns (nil, nil) when the record does not exist.
+//
+// Uses a raw `SELECT * FROM <table:id>` query rather than the SDK's
+// Select shortcut because SurrealDB v3+ treats the SDK's string-target
+// as a table name (rejecting "table:id" as a missing table).
 func GetRecord(ctx context.Context, client *connection.DatabaseClient, table string, recordID any) (map[string]any, error) {
 	if client == nil {
 		return nil, surqlerrors.New(surqlerrors.ErrValidation, "client cannot be nil")
@@ -64,25 +69,18 @@ func GetRecord(ctx context.Context, client *connection.DatabaseClient, table str
 	if err != nil {
 		return nil, err
 	}
-	res, err := client.Select(ctx, target)
+	res, err := client.Query(ctx, "SELECT * FROM "+target+";")
 	if err != nil {
-		return nil, err
-	}
-	if res == nil {
-		return nil, nil
-	}
-	if m, ok := res.(map[string]any); ok {
-		return m, nil
-	}
-	if arr, ok := res.([]any); ok {
-		if len(arr) == 0 {
+		if isTableMissingError(err) {
 			return nil, nil
 		}
-		if m, ok := arr[0].(map[string]any); ok {
-			return m, nil
-		}
+		return nil, err
 	}
-	return nil, nil
+	rows := ExtractResult(res)
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	return rows[0], nil
 }
 
 // UpdateRecord replaces the record identified by recordID with data
@@ -227,6 +225,10 @@ func CountRecords(ctx context.Context, client *connection.DatabaseClient, table 
 	if client == nil {
 		return 0, surqlerrors.New(surqlerrors.ErrValidation, "client cannot be nil")
 	}
+	// SurrealDB: `SELECT count() FROM table` returns one row per record
+	// (each with `count: 1`); `SELECT count() FROM table GROUP ALL` returns
+	// a single aggregated row. Mirror the Python port's behaviour by
+	// always requesting GROUP ALL.
 	q, err := Query{}.Select([]string{"count()"}).FromTable(table)
 	if err != nil {
 		return 0, err
@@ -237,8 +239,12 @@ func CountRecords(ctx context.Context, client *connection.DatabaseClient, table 
 			return 0, err
 		}
 	}
+	q = q.GroupAll()
 	raw, err := ExecuteQuery(ctx, client, q)
 	if err != nil {
+		if isTableMissingError(err) {
+			return 0, nil
+		}
 		return 0, err
 	}
 	first := ExtractOne(raw)
@@ -252,12 +258,26 @@ func CountRecords(ctx context.Context, client *connection.DatabaseClient, table 
 }
 
 // Exists reports whether the record identified by recordID is present.
+// A "table does not exist" error from SurrealDB v3+ is treated as "not
+// present" rather than a hard failure, matching Python's semantic where
+// a missing table counts as 'record absent'.
 func Exists(ctx context.Context, client *connection.DatabaseClient, table string, recordID any) (bool, error) {
 	rec, err := GetRecord(ctx, client, table, recordID)
 	if err != nil {
+		if isTableMissingError(err) {
+			return false, nil
+		}
 		return false, err
 	}
 	return rec != nil, nil
+}
+
+// isTableMissingError reports whether the error is SurrealDB's
+// "table '...' does not exist" response. v2.x treated missing tables as
+// empty results; v3+ returns this error. Callers that want an empty
+// result to be equivalent to "no records" use this check.
+func isTableMissingError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "does not exist")
 }
 
 // First returns the first record matching the filter options, or nil.
