@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/albedosehen/surql-go/pkg/surql/types"
+	"github.com/Oneiriq/surql-go/pkg/surql/types"
 )
 
 // ExpressionKind tags an Expression by category (field / value / function /

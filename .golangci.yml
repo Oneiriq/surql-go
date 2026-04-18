@@ -58,7 +58,7 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/albedosehen/surql-go
+        - github.com/Oneiriq/surql-go
   exclusions:
     generated: lax
     paths:

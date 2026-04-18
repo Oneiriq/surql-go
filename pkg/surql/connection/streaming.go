@@ -8,7 +8,7 @@ import (
 	sdkconn "github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
 )
 
 // LiveNotification is the event emitted by a LiveQuery subscription. It is a

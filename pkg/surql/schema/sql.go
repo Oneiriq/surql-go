@@ -3,7 +3,7 @@ package schema
 import (
 	"strings"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
 )
 
 // GenerateTableSQL emits the full list of DEFINE statements for a table: the

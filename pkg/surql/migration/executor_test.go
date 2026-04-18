@@ -6,7 +6,7 @@ import (
 	"sort"
 	"testing"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
 )
 
 // --- ExecuteOptions functional constructors ---

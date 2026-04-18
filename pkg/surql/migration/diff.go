@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
-	"github.com/albedosehen/surql-go/pkg/surql/schema"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
+	"github.com/Oneiriq/surql-go/pkg/surql/schema"
 )
 
 // safeDefaultPattern mirrors the Python _SAFE_DEFAULT_PATTERN. It matches

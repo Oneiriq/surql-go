@@ -5,8 +5,8 @@ import (
 	"regexp"
 	"strings"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
-	"github.com/albedosehen/surql-go/pkg/surql/types"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
+	"github.com/Oneiriq/surql-go/pkg/surql/types"
 )
 
 // FieldType enumerates the SurrealDB field types supported in DEFINE FIELD.

@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
 )
 
 // tablePattern matches valid SurrealDB table names: [A-Za-z_][A-Za-z0-9_]*

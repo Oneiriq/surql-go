@@ -7,7 +7,7 @@ import (
 	"sort"
 	"testing"
 
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
 )
 
 // writeTestMigrationFile writes a migration file with the given version and

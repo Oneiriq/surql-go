@@ -6,8 +6,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/albedosehen/surql-go/pkg/surql/connection"
-	surqlerrors "github.com/albedosehen/surql-go/pkg/surql/errors"
+	"github.com/Oneiriq/surql-go/pkg/surql/connection"
+	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
 )
 
 // MigrationTableName is the SurrealDB table that tracks applied migrations.

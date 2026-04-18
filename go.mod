@@ -1,4 +1,4 @@
-module github.com/albedosehen/surql-go
+module github.com/Oneiriq/surql-go
 
 go 1.26.1
 
