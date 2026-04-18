@@ -201,9 +201,8 @@ func parseMigrationContent(body string) (parsed, error) {
 	// any leading whitespace).
 	upIdx, downIdx := -1, -1
 	for i, raw := range lines {
-		trim := strings.TrimSpace(raw)
-		switch {
-		case trim == markerUp:
+		switch strings.TrimSpace(raw) {
+		case markerUp:
 			if upIdx != -1 {
 				return parsed{}, surqlerrors.New(
 					surqlerrors.ErrMigrationLoad,
@@ -211,7 +210,7 @@ func parseMigrationContent(body string) (parsed, error) {
 				)
 			}
 			upIdx = i
-		case trim == markerDown:
+		case markerDown:
 			if downIdx != -1 {
 				return parsed{}, surqlerrors.New(
 					surqlerrors.ErrMigrationLoad,

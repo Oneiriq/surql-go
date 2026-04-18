@@ -137,7 +137,7 @@ func TestExtract_Empty(t *testing.T) {
 }
 
 func TestExtract_Nil(t *testing.T) {
-	if out := ExtractResult(nil); out != nil && len(out) != 0 {
+	if out := ExtractResult(nil); len(out) != 0 {
 		t.Errorf("got %+v", out)
 	}
 }

@@ -19,7 +19,7 @@ import (
 func withFrozenClock(t *testing.T, ts time.Time) func() {
 	t.Helper()
 	prev := now
-	now = func() time.Time { return ts.UTC() }
+	now = ts.UTC
 	return func() { now = prev }
 }
 
