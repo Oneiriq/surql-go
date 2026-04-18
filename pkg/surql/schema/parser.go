@@ -420,11 +420,17 @@ func parseEvents(dict map[string]string) []EventDefinition {
 // Field extraction helpers
 // -----------------------------------------------------------------------------
 
+// Leading-keyword anchor: match only at start of input OR when the
+// previous character is whitespace. This prevents the leading DEFAULT /
+// VALUE keyword from matching inside a `$default` / `$value` identifier
+// (Go's regexp package has no lookbehind, so the anchor is emitted as a
+// prefix group and the captured expression trims it). Same spirit as the
+// Python fix in surql-py#8.
 var (
 	reFieldType      = regexp.MustCompile(`(?i)TYPE\s+([A-Za-z_]\w*)`)
-	reFieldAssert    = regexp.MustCompile(`(?is)ASSERT\s+(.+?)(?:\s+DEFAULT\b|\s+VALUE\b|\s+READONLY\b|\s+FLEXIBLE\b|\s+PERMISSIONS\b|\s*;|\s*$)`)
-	reFieldDefault   = regexp.MustCompile(`(?is)DEFAULT\s+(.+?)(?:\s+VALUE\b|\s+READONLY\b|\s+FLEXIBLE\b|\s+PERMISSIONS\b|\s+ASSERT\b|\s*;|\s*$)`)
-	reFieldValueExpr = regexp.MustCompile(`(?is)\bVALUE\s+(.+?)(?:\s+DEFAULT\b|\s+READONLY\b|\s+FLEXIBLE\b|\s+PERMISSIONS\b|\s+ASSERT\b|\s*;|\s*$)`)
+	reFieldAssert    = regexp.MustCompile(`(?is)(?:^|\s)ASSERT\s+(.+?)(?:\s+DEFAULT\b|\s+VALUE\b|\s+READONLY\b|\s+FLEXIBLE\b|\s+PERMISSIONS\b|\s*;|\s*$)`)
+	reFieldDefault   = regexp.MustCompile(`(?is)(?:^|\s)DEFAULT\s+(.+?)(?:\s+VALUE\b|\s+READONLY\b|\s+FLEXIBLE\b|\s+PERMISSIONS\b|\s+ASSERT\b|\s*;|\s*$)`)
+	reFieldValueExpr = regexp.MustCompile(`(?is)(?:^|\s)VALUE\s+(.+?)(?:\s+DEFAULT\b|\s+READONLY\b|\s+FLEXIBLE\b|\s+PERMISSIONS\b|\s+ASSERT\b|\s*;|\s*$)`)
 	reFieldReadOnly  = regexp.MustCompile(`(?i)\bREADONLY\b`)
 	reFieldFlexible  = regexp.MustCompile(`(?i)\bFLEXIBLE\b`)
 )
