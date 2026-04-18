@@ -12,8 +12,13 @@
 //     UPSERT / DELETE / RELATE operations, graph traversal, vector search,
 //     return-format, and optimization hints
 //   - standalone helper constructors (Select, FromTable, Insert, Update,
-//     Upsert, Delete, Relate, VectorSearchQuery, SimilaritySearchQuery).
-//
-// Subsequent increments add typed/batch/graph CRUD helpers and the async
-// executor.
+//     Upsert, Delete, Relate, VectorSearchQuery, SimilaritySearchQuery)
+//   - the query executor (ExecuteQuery, ExecuteRaw, FetchOne, FetchAll,
+//     FetchMany, ExecuteRawTyped) layered on connection.DatabaseClient
+//   - JSON-in/JSON-out record CRUD helpers (CreateRecord, CreateRecords,
+//     GetRecord, UpdateRecord, MergeRecord, UpsertRecord, DeleteRecord,
+//     DeleteRecords, QueryRecords, CountRecords, Exists, First, Last) with a
+//     QueryOptions value type for filters and pagination
+//   - the generic typed variants (CreateTyped, GetTyped, QueryTyped,
+//     UpdateTyped, UpsertTyped) that round-trip through encoding/json.
 package query
