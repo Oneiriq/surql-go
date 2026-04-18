@@ -30,5 +30,5 @@ checksum:
 
 release:
   github:
-    owner: albedosehen
+    owner: Oneiriq
     name: surql-go
