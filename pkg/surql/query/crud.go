@@ -151,6 +151,143 @@ func UpsertRecord(ctx context.Context, client *connection.DatabaseClient, table 
 	return normaliseSingle(raw), nil
 }
 
+// GetByTarget fetches the single record referenced by a target expression
+// such as [types.TypeRecord] or [types.TypeThing]. Returns (nil, nil) when
+// the underlying record does not exist. Intended to be paired with
+// TypeRecord/TypeThing for callers who already have a composed target.
+func GetByTarget(ctx context.Context, client *connection.DatabaseClient, target types.SurrealFn) (map[string]any, error) {
+	if client == nil {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "client cannot be nil")
+	}
+	expr := target.ToSurql()
+	if expr == "" {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "target cannot be empty")
+	}
+	res, err := client.Query(ctx, "SELECT * FROM "+expr+";")
+	if err != nil {
+		if isTableMissingError(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	rows := ExtractResult(res)
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	return rows[0], nil
+}
+
+// UpdateByTarget replaces the record referenced by target (PUT semantics).
+// Mirrors [UpdateRecord] but takes a single target expression so callers
+// can use [types.TypeRecord] / [types.TypeThing] verbatim.
+func UpdateByTarget(ctx context.Context, client *connection.DatabaseClient, target types.SurrealFn, data map[string]any) (map[string]any, error) {
+	if client == nil {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "client cannot be nil")
+	}
+	expr := target.ToSurql()
+	if expr == "" {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "target cannot be empty")
+	}
+	if data == nil {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "data cannot be nil")
+	}
+	if err := validateDataKeys(data); err != nil {
+		return nil, err
+	}
+	// Render as a raw UPDATE so the target expression is splice-safe.
+	surql := "UPDATE " + expr + " CONTENT " + renderDataObject(data) + ";"
+	res, err := client.Query(ctx, surql)
+	if err != nil {
+		return nil, err
+	}
+	if m := ExtractOne(res); m != nil {
+		return m, nil
+	}
+	return normaliseSingle(res), nil
+}
+
+// MergeByTarget partially updates the record referenced by target
+// (PATCH semantics). Mirrors [MergeRecord] for composed targets.
+func MergeByTarget(ctx context.Context, client *connection.DatabaseClient, target types.SurrealFn, data map[string]any) (map[string]any, error) {
+	if client == nil {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "client cannot be nil")
+	}
+	expr := target.ToSurql()
+	if expr == "" {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "target cannot be empty")
+	}
+	if data == nil {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "data cannot be nil")
+	}
+	if err := validateDataKeys(data); err != nil {
+		return nil, err
+	}
+	surql := "UPDATE " + expr + " MERGE " + renderDataObject(data) + ";"
+	res, err := client.Query(ctx, surql)
+	if err != nil {
+		return nil, err
+	}
+	if m := ExtractOne(res); m != nil {
+		return m, nil
+	}
+	return normaliseSingle(res), nil
+}
+
+// UpsertByTarget inserts-or-replaces the record referenced by target.
+// Mirrors [UpsertRecord] for composed targets.
+func UpsertByTarget(ctx context.Context, client *connection.DatabaseClient, target types.SurrealFn, data map[string]any) (map[string]any, error) {
+	if client == nil {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "client cannot be nil")
+	}
+	expr := target.ToSurql()
+	if expr == "" {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "target cannot be empty")
+	}
+	if data == nil {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "data cannot be nil")
+	}
+	if err := validateDataKeys(data); err != nil {
+		return nil, err
+	}
+	surql := "UPSERT " + expr + " CONTENT " + renderDataObject(data) + ";"
+	res, err := client.Query(ctx, surql)
+	if err != nil {
+		return nil, err
+	}
+	if m := ExtractOne(res); m != nil {
+		return m, nil
+	}
+	return normaliseSingle(res), nil
+}
+
+// DeleteByTarget removes the record referenced by target. A "table does
+// not exist" error is treated as a no-op for v3 parity.
+func DeleteByTarget(ctx context.Context, client *connection.DatabaseClient, target types.SurrealFn) error {
+	if client == nil {
+		return surqlerrors.New(surqlerrors.ErrValidation, "client cannot be nil")
+	}
+	expr := target.ToSurql()
+	if expr == "" {
+		return surqlerrors.New(surqlerrors.ErrValidation, "target cannot be empty")
+	}
+	if _, err := client.Query(ctx, "DELETE "+expr+";"); err != nil {
+		if isTableMissingError(err) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+// ExistsByTarget reports whether the record referenced by target exists.
+func ExistsByTarget(ctx context.Context, client *connection.DatabaseClient, target types.SurrealFn) (bool, error) {
+	rec, err := GetByTarget(ctx, client, target)
+	if err != nil {
+		return false, err
+	}
+	return rec != nil, nil
+}
+
 // DeleteRecord removes a single record identified by recordID.
 func DeleteRecord(ctx context.Context, client *connection.DatabaseClient, table string, recordID any) error {
 	if client == nil {

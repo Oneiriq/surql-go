@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Oneiriq/surql-go/pkg/surql/connection"
+	"github.com/Oneiriq/surql-go/pkg/surql/types"
 )
 
 // getIntegrationURL reads the SurrealDB URL used by CI's integration job.
@@ -245,5 +246,108 @@ func TestIntegration_ExecuteRawTyped(t *testing.T) {
 	}
 	if len(rows) != 1 || rows[0].Name != "alice" {
 		t.Errorf("got %+v", rows)
+	}
+}
+
+func TestIntegration_TypeRecordTarget_CRUD(t *testing.T) {
+	client, cleanup := newIntegrationClient(t)
+	defer cleanup()
+	cleanupTable(t, client, "surqlgo_type_record")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	// Seed via CreateRecord so the record id is server-generated, then
+	// use a stable string id for the target-driven assertions.
+	if _, err := client.Query(ctx,
+		"CREATE surqlgo_type_record:alice SET name = 'alice', age = 30;"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// GetByTarget
+	target := types.TypeRecord("surqlgo_type_record", "alice")
+	got, err := GetByTarget(ctx, client, target)
+	if err != nil {
+		t.Fatalf("GetByTarget: %v", err)
+	}
+	if got == nil || got["name"] != "alice" {
+		t.Fatalf("GetByTarget: got %+v", got)
+	}
+
+	// ExistsByTarget
+	present, err := ExistsByTarget(ctx, client, target)
+	if err != nil {
+		t.Fatalf("ExistsByTarget: %v", err)
+	}
+	if !present {
+		t.Fatal("ExistsByTarget: want true")
+	}
+
+	// UpdateByTarget (PUT semantics: age alone replaces the record body)
+	if _, err := UpdateByTarget(ctx, client, target, map[string]any{"age": 40}); err != nil {
+		t.Fatalf("UpdateByTarget: %v", err)
+	}
+	got, err = GetByTarget(ctx, client, target)
+	if err != nil || got == nil {
+		t.Fatalf("after UpdateByTarget: err=%v got=%+v", err, got)
+	}
+	if _, ok := got["name"]; ok {
+		t.Errorf("UpdateByTarget did not replace body: name still present %+v", got)
+	}
+
+	// MergeByTarget restores name alongside age.
+	if _, err := MergeByTarget(ctx, client, target, map[string]any{"name": "alice"}); err != nil {
+		t.Fatalf("MergeByTarget: %v", err)
+	}
+	got, err = GetByTarget(ctx, client, target)
+	if err != nil || got == nil {
+		t.Fatalf("after MergeByTarget: err=%v got=%+v", err, got)
+	}
+	if got["name"] != "alice" {
+		t.Errorf("MergeByTarget: name=%v", got["name"])
+	}
+
+	// UpsertByTarget on a new id inserts.
+	newTarget := types.TypeRecord("surqlgo_type_record", "carol")
+	if _, err := UpsertByTarget(ctx, client, newTarget, map[string]any{"name": "carol"}); err != nil {
+		t.Fatalf("UpsertByTarget insert: %v", err)
+	}
+	got, err = GetByTarget(ctx, client, newTarget)
+	if err != nil || got == nil {
+		t.Fatalf("after UpsertByTarget insert: err=%v got=%+v", err, got)
+	}
+
+	// DeleteByTarget removes.
+	if err := DeleteByTarget(ctx, client, target); err != nil {
+		t.Fatalf("DeleteByTarget: %v", err)
+	}
+	present, err = ExistsByTarget(ctx, client, target)
+	if err != nil {
+		t.Fatalf("ExistsByTarget after delete: %v", err)
+	}
+	if present {
+		t.Fatal("ExistsByTarget after delete: want false")
+	}
+}
+
+func TestIntegration_TypeThingTarget_Get(t *testing.T) {
+	client, cleanup := newIntegrationClient(t)
+	defer cleanup()
+	cleanupTable(t, client, "surqlgo_type_thing")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if _, err := client.Query(ctx,
+		"CREATE surqlgo_type_thing:xyz SET name = 'xyz';"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	got, err := GetByTarget(ctx, client, types.TypeThing("surqlgo_type_thing", "xyz"))
+	if err != nil {
+		t.Fatalf("GetByTarget: %v", err)
+	}
+	if got == nil || got["name"] != "xyz" {
+		t.Errorf("got %+v", got)
 	}
 }
