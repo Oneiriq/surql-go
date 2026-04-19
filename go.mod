@@ -3,6 +3,7 @@ module github.com/Oneiriq/surql-go
 go 1.26.1
 
 require (
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/joho/godotenv v1.5.1
 	github.com/pelletier/go-toml/v2 v2.3.0
 	github.com/redis/go-redis/v9 v9.18.0
@@ -19,4 +20,5 @@ require (
 	github.com/kr/text v0.2.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
+	golang.org/x/sys v0.13.0 // indirect
 )
