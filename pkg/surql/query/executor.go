@@ -26,6 +26,12 @@ func ExecuteQuery(ctx context.Context, client *connection.DatabaseClient, q Quer
 	return client.Query(ctx, surql)
 }
 
+// Execute is the method form of [ExecuteQuery], letting callers chain
+// `NewQuery().Select(...).From(...).GroupAll().Execute(ctx, client)`.
+func (q Query) Execute(ctx context.Context, client *connection.DatabaseClient) (any, error) {
+	return ExecuteQuery(ctx, client, q)
+}
+
 // ExecuteRaw runs a raw SurrealQL statement with the supplied parameter map.
 // Pass a nil vars map for a parameter-less query.
 func ExecuteRaw(ctx context.Context, client *connection.DatabaseClient, surql string, vars map[string]any) (any, error) {

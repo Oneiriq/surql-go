@@ -11,6 +11,20 @@ type Operator interface {
 	ToSurql() string
 }
 
+// RawSurqlValue is an opt-in marker that causes [quoteValue] to emit
+// `ToSurql()` verbatim instead of quoting the value. Any type from
+// outside this package can participate in raw-value rendering by
+// implementing the single [IsRawSurqlValue] marker method alongside
+// `ToSurql() string`.
+//
+// The marker guard stops arbitrary [fmt.Stringer] implementations from
+// accidentally opting in — a type must intentionally declare raw-render
+// semantics by implementing both methods.
+type RawSurqlValue interface {
+	ToSurql() string
+	IsRawSurqlValue()
+}
+
 // quoteValue renders v as a SurrealQL literal.
 //
 // Rules (matching the Python port):
@@ -20,6 +34,7 @@ type Operator interface {
 //   - string            -> 'single-quoted' with \ and ' escaped
 //   - SurrealFn         -> raw expression
 //   - RecordRef         -> type::record(...) raw expression
+//   - RawSurqlValue     -> raw expression (opt-in via marker interface)
 //   - []any             -> '[' + quoted elements + ']'
 //   - fmt.Stringer      -> quoted string form
 func quoteValue(v any) string {
@@ -46,6 +61,8 @@ func quoteValue(v any) string {
 	case SurrealFn:
 		return x.ToSurql()
 	case RecordRef:
+		return x.ToSurql()
+	case RawSurqlValue:
 		return x.ToSurql()
 	case []any:
 		parts := make([]string, len(x))

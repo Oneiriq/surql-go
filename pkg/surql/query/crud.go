@@ -151,6 +151,143 @@ func UpsertRecord(ctx context.Context, client *connection.DatabaseClient, table 
 	return normaliseSingle(raw), nil
 }
 
+// GetByTarget fetches the single record referenced by a target expression
+// such as [types.TypeRecord] or [types.TypeThing]. Returns (nil, nil) when
+// the underlying record does not exist. Intended to be paired with
+// TypeRecord/TypeThing for callers who already have a composed target.
+func GetByTarget(ctx context.Context, client *connection.DatabaseClient, target types.SurrealFn) (map[string]any, error) {
+	if client == nil {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "client cannot be nil")
+	}
+	expr := target.ToSurql()
+	if expr == "" {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "target cannot be empty")
+	}
+	res, err := client.Query(ctx, "SELECT * FROM "+expr+";")
+	if err != nil {
+		if isTableMissingError(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	rows := ExtractResult(res)
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	return rows[0], nil
+}
+
+// UpdateByTarget replaces the record referenced by target (PUT semantics).
+// Mirrors [UpdateRecord] but takes a single target expression so callers
+// can use [types.TypeRecord] / [types.TypeThing] verbatim.
+func UpdateByTarget(ctx context.Context, client *connection.DatabaseClient, target types.SurrealFn, data map[string]any) (map[string]any, error) {
+	if client == nil {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "client cannot be nil")
+	}
+	expr := target.ToSurql()
+	if expr == "" {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "target cannot be empty")
+	}
+	if data == nil {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "data cannot be nil")
+	}
+	if err := validateDataKeys(data); err != nil {
+		return nil, err
+	}
+	// Render as a raw UPDATE so the target expression is splice-safe.
+	surql := "UPDATE " + expr + " CONTENT " + renderDataObject(data) + ";"
+	res, err := client.Query(ctx, surql)
+	if err != nil {
+		return nil, err
+	}
+	if m := ExtractOne(res); m != nil {
+		return m, nil
+	}
+	return normaliseSingle(res), nil
+}
+
+// MergeByTarget partially updates the record referenced by target
+// (PATCH semantics). Mirrors [MergeRecord] for composed targets.
+func MergeByTarget(ctx context.Context, client *connection.DatabaseClient, target types.SurrealFn, data map[string]any) (map[string]any, error) {
+	if client == nil {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "client cannot be nil")
+	}
+	expr := target.ToSurql()
+	if expr == "" {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "target cannot be empty")
+	}
+	if data == nil {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "data cannot be nil")
+	}
+	if err := validateDataKeys(data); err != nil {
+		return nil, err
+	}
+	surql := "UPDATE " + expr + " MERGE " + renderDataObject(data) + ";"
+	res, err := client.Query(ctx, surql)
+	if err != nil {
+		return nil, err
+	}
+	if m := ExtractOne(res); m != nil {
+		return m, nil
+	}
+	return normaliseSingle(res), nil
+}
+
+// UpsertByTarget inserts-or-replaces the record referenced by target.
+// Mirrors [UpsertRecord] for composed targets.
+func UpsertByTarget(ctx context.Context, client *connection.DatabaseClient, target types.SurrealFn, data map[string]any) (map[string]any, error) {
+	if client == nil {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "client cannot be nil")
+	}
+	expr := target.ToSurql()
+	if expr == "" {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "target cannot be empty")
+	}
+	if data == nil {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "data cannot be nil")
+	}
+	if err := validateDataKeys(data); err != nil {
+		return nil, err
+	}
+	surql := "UPSERT " + expr + " CONTENT " + renderDataObject(data) + ";"
+	res, err := client.Query(ctx, surql)
+	if err != nil {
+		return nil, err
+	}
+	if m := ExtractOne(res); m != nil {
+		return m, nil
+	}
+	return normaliseSingle(res), nil
+}
+
+// DeleteByTarget removes the record referenced by target. A "table does
+// not exist" error is treated as a no-op for v3 parity.
+func DeleteByTarget(ctx context.Context, client *connection.DatabaseClient, target types.SurrealFn) error {
+	if client == nil {
+		return surqlerrors.New(surqlerrors.ErrValidation, "client cannot be nil")
+	}
+	expr := target.ToSurql()
+	if expr == "" {
+		return surqlerrors.New(surqlerrors.ErrValidation, "target cannot be empty")
+	}
+	if _, err := client.Query(ctx, "DELETE "+expr+";"); err != nil {
+		if isTableMissingError(err) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+// ExistsByTarget reports whether the record referenced by target exists.
+func ExistsByTarget(ctx context.Context, client *connection.DatabaseClient, target types.SurrealFn) (bool, error) {
+	rec, err := GetByTarget(ctx, client, target)
+	if err != nil {
+		return false, err
+	}
+	return rec != nil, nil
+}
+
 // DeleteRecord removes a single record identified by recordID.
 func DeleteRecord(ctx context.Context, client *connection.DatabaseClient, table string, recordID any) error {
 	if client == nil {
@@ -361,6 +498,112 @@ func Last(ctx context.Context, client *connection.DatabaseClient, table string, 
 		opts.OrderBy = &flipped
 	}
 	return First(ctx, client, table, opts)
+}
+
+// AggregateOpts configures a single aggregation query assembled by
+// [AggregateRecords]. At least one aggregation expression must be
+// supplied via Select; GroupBy / GroupAll / Where / Having are all
+// optional.
+type AggregateOpts struct {
+	// Table is the source table. Required.
+	Table string
+	// Select maps result alias -> aggregation expression. Accepts any
+	// [types.Operator] implementation (SurrealFn, Expression, raw
+	// wrappers). Keys are emitted in sorted order for deterministic
+	// rendering.
+	Select map[string]types.Operator
+	// GroupBy lists explicit grouping fields. Mutually exclusive with
+	// GroupAll; if both are supplied, GroupAll wins.
+	GroupBy []string
+	// GroupAll toggles SurrealQL's `GROUP ALL` whole-result aggregation.
+	GroupAll bool
+	// Where is an optional filter applied before grouping. Each entry is
+	// a raw SurrealQL fragment or a types.Operator implementer.
+	Where []any
+	// OrderBy sets an ORDER BY clause when non-nil (field + direction).
+	OrderBy *OrderField
+	// Limit bounds the number of aggregated rows when non-nil.
+	Limit *int
+	// Offset skips the first N aggregated rows when non-nil.
+	Offset *int
+}
+
+// AggregateRecords runs a SELECT projection of aggregation expressions
+// against opts.Table and returns the raw aggregated rows. Each row's
+// keys match the aliases in opts.Select.
+//
+// Example:
+//
+//	opts := query.AggregateOpts{
+//	    Table:   "memory_entry",
+//	    Select:  map[string]types.Operator{
+//	        "count": query.CountAll(),
+//	        "total": query.MathSum("strength"),
+//	    },
+//	    GroupBy: []string{"network"},
+//	}
+//	rows, err := query.AggregateRecords(ctx, client, opts)
+func AggregateRecords(ctx context.Context, client *connection.DatabaseClient, opts AggregateOpts) ([]map[string]any, error) {
+	if opts.Table == "" {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "AggregateOpts.Table cannot be empty")
+	}
+	if len(opts.Select) == 0 {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation,
+			"AggregateOpts.Select must contain at least one aggregation expression")
+	}
+	q := Query{}.SelectAliased(opts.Select)
+	// SurrealDB requires every GROUP BY idiom to appear in the projection;
+	// prepend the group fields verbatim so callers don't have to
+	// remember.
+	if !opts.GroupAll && len(opts.GroupBy) > 0 {
+		grouped := append([]string(nil), opts.GroupBy...)
+		grouped = append(grouped, q.Fields...)
+		q.Fields = grouped
+	}
+	q, err := q.FromTable(opts.Table)
+	if err != nil {
+		return nil, err
+	}
+	if client == nil {
+		return nil, surqlerrors.New(surqlerrors.ErrValidation, "client cannot be nil")
+	}
+	for _, w := range opts.Where {
+		q, err = q.Where(w)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if opts.GroupAll {
+		q = q.GroupAll()
+	} else if len(opts.GroupBy) > 0 {
+		q = q.GroupBy(opts.GroupBy...)
+	}
+	if opts.OrderBy != nil {
+		q, err = q.OrderBy(opts.OrderBy.Field, opts.OrderBy.Direction)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if opts.Limit != nil {
+		q, err = q.Limit(*opts.Limit)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if opts.Offset != nil {
+		q, err = q.Offset(*opts.Offset)
+		if err != nil {
+			return nil, err
+		}
+	}
+	raw, err := ExecuteQuery(ctx, client, q)
+	if err != nil {
+		if isTableMissingError(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return ExtractResult(raw), nil
 }
 
 // ---------------------------------------------------------------------------

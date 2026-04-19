@@ -181,6 +181,42 @@ func TestToInt64(t *testing.T) {
 	}
 }
 
+func TestByTargetHelpers_NilClient(t *testing.T) {
+	ctx := context.Background()
+	target := types.TypeRecord("task", "abc")
+	cases := []struct {
+		name string
+		fn   func() error
+	}{
+		{"GetByTarget", func() error { _, err := GetByTarget(ctx, nil, target); return err }},
+		{"UpdateByTarget", func() error {
+			_, err := UpdateByTarget(ctx, nil, target, map[string]any{"a": 1})
+			return err
+		}},
+		{"MergeByTarget", func() error {
+			_, err := MergeByTarget(ctx, nil, target, map[string]any{"a": 1})
+			return err
+		}},
+		{"UpsertByTarget", func() error {
+			_, err := UpsertByTarget(ctx, nil, target, map[string]any{"a": 1})
+			return err
+		}},
+		{"DeleteByTarget", func() error { return DeleteByTarget(ctx, nil, target) }},
+		{"ExistsByTarget", func() error { _, err := ExistsByTarget(ctx, nil, target); return err }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.fn()
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if !errors.Is(err, surqlerrors.ErrValidation) {
+				t.Errorf("want ErrValidation, got %v", err)
+			}
+		})
+	}
+}
+
 func TestLast_FlipsOrderDirection(t *testing.T) {
 	opts := QueryOptions{OrderBy: &OrderField{Field: "created_at", Direction: "ASC"}}
 	// Last only flips the direction; it still calls First which requires a
