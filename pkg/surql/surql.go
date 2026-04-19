@@ -21,7 +21,7 @@ import (
 )
 
 // Version is the current surql-go release.
-const Version = "0.1.0"
+const Version = "0.2.0"
 
 // ExtractOne returns the first record from a raw response or
 // (nil, nil) when the envelope is empty. Mirrors the Python
