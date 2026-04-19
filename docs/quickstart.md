@@ -96,3 +96,7 @@ for _, d := range diffs {
   events, access rules.
 - **[Migrations](migrations.md)** -- the full migration lifecycle.
 - **[Query Builder](queries.md)** -- immutable fluent queries.
+- **[Query UX](query-ux.md)** -- first-class CRUD / aggregation helpers.
+- **[v3 Patterns](v3-patterns.md)** -- interactive transactions + v3-only
+  features.
+- **[CLI Reference](cli.md)** -- the `surql` subcommand surface.

@@ -5,10 +5,26 @@ on:
     branches:
       - main
       - 'release/**'
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - 'CODEOWNERS'
   push:
     branches:
       - main
       - 'release/**'
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - 'CODEOWNERS'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   lint:
@@ -40,8 +56,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        go: ['1.26', 'stable']
+        # Cost reduction: every-commit matrix is Linux + primary Go version
+        # only. Cross-platform + multi-version validation runs in nightly.yml.
+        os: [ubuntu-latest]
+        go: ['1.26']
     steps:
       - uses: actions/checkout@v6
 

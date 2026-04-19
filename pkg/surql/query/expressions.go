@@ -34,6 +34,11 @@ func (e Expression) ToSurql() string { return e.SQL }
 // String implements fmt.Stringer.
 func (e Expression) String() string { return e.SQL }
 
+// IsRawSurqlValue marks Expression as a [types.RawSurqlValue] so it
+// renders verbatim when used as a value in CREATE/UPDATE/UPSERT set
+// clauses or in quoted operator values.
+func (e Expression) IsRawSurqlValue() {}
+
 // NewRaw builds a raw-kind Expression.
 func NewRaw(sql string) Expression { return Expression{SQL: sql, Kind: ExprRaw} }
 

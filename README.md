@@ -2,21 +2,22 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/go-1.26%2B-00ADD8)](https://go.dev/)
-[![SurrealDB](https://img.shields.io/badge/SurrealDB-2.0%2B-ff00a0)](https://surrealdb.com/)
+[![SurrealDB](https://img.shields.io/badge/SurrealDB-3.0%2B-ff00a0)](https://surrealdb.com/)
 
 A code-first database toolkit for [SurrealDB](https://surrealdb.com/). Define schemas, generate migrations, build queries, and perform typed CRUD -- all from Go.
 
 ## Features
 
-- **Code-First Migrations** - Schema changes defined in code with automatic migration generation (auto-diff + `.surql` file output with `-- @up` / `-- @down` sections)
-- **Type-Safe Query Builder** - Immutable fluent API with operator-typed `Where`, expression helpers, and `encoding/json` struct tags
-- **Vector Search** - HNSW and MTREE index support with 8 distance metrics and EFC/M tuning
-- **Graph Traversal** - Native SurrealDB graph features with edge relationships
-- **Schema Visualization** - Mermaid, GraphViz, and ASCII diagrams with theming
-- **CLI Tools** - Migrations, schema inspection, validation, database management *(planned)*
-- **Stdlib-First** - Minimal dependencies; stdlib `net/http` + official SurrealDB SDK *(planned)*
+- **Code-First Migrations** -- Schema changes defined in code with automatic migration generation (auto-diff + `.surql` file output with `-- @up` / `-- @down` sections, squash, watcher, auto-snapshot hooks)
+- **Type-Safe Query Builder** -- Immutable fluent API with operator-typed `Where`, `SelectExpr` / `SelectAliased` aggregations, function factories, and `encoding/json` struct tags
+- **v3 Interactive Transactions** -- Native `BEGIN` / `COMMIT` / `ROLLBACK` via `DatabaseClient.Begin`, plus raw record-id targets and `GROUP ALL`
+- **Vector Search** -- HNSW and MTREE index support with 8 distance metrics and EFC/M tuning
+- **Graph Traversal** -- Native SurrealDB graph features with edge relationships and a fluent `GraphQuery` builder
+- **Schema Visualization** -- Mermaid, GraphViz, and ASCII diagrams with theming
+- **Full CLI** -- `surql migrate` / `schema` / `db` / `orchestrate` subcommands for the entire lifecycle
+- **Cache + Orchestration** -- Memory + Redis cache backends, sequential / parallel / rolling / canary deployment strategies
 
-## Quick Start
+## Install
 
 ```shell
 go get github.com/Oneiriq/surql-go
@@ -27,6 +28,10 @@ With the CLI:
 ```shell
 go install github.com/Oneiriq/surql-go/cmd/surql@latest
 ```
+
+## Quick Start
+
+### Define a schema
 
 ```go
 package main
@@ -47,18 +52,72 @@ func main() {
         ),
         schema.WithIndexes(schema.UniqueIndex("email_idx", []string{"email"})),
     )
-    // ...
+    _ = user
 }
+```
+
+### Fetch a record by id (v3 raw target)
+
+```go
+import (
+    "github.com/Oneiriq/surql-go/pkg/surql/query"
+    "github.com/Oneiriq/surql-go/pkg/surql/types"
+)
+
+target := types.TypeRecord("user", "alice")
+record, err := query.GetByTarget(ctx, client, target)
+```
+
+### Aggregate with `GROUP ALL`
+
+```go
+opts := query.AggregateOpts{
+    Table: "match",
+    Select: map[string]types.Operator{
+        "count": query.CountAll(),
+        "avg":   query.MathMean("score"),
+    },
+    GroupAll: true,
+}
+rows, _ := query.AggregateRecords(ctx, client, opts)
+```
+
+### Extract a scalar from a raw query
+
+```go
+import "github.com/Oneiriq/surql-go/pkg/surql"
+
+raw, _ := client.Query(ctx, "SELECT count() AS n FROM user GROUP ALL")
+count, _ := surql.ExtractScalar[int64](raw, "n")
+```
+
+### Interactive transaction
+
+```go
+tx, _ := client.Begin(ctx)
+if _, err := tx.Execute(ctx, "UPDATE user:alice SET status = 'active'"); err != nil {
+    _ = tx.Rollback(ctx)
+    return err
+}
+return tx.Commit(ctx)
 ```
 
 ## Documentation
 
 Full documentation at **[oneiriq.github.io/surql-go](https://oneiriq.github.io/surql-go/)**.
 
+Key pages:
+
+- [Features & Package Layout](https://oneiriq.github.io/surql-go/features/)
+- [v3 Patterns](https://oneiriq.github.io/surql-go/v3-patterns/)
+- [Query UX Helpers](https://oneiriq.github.io/surql-go/query-ux/)
+- [CLI Reference](https://oneiriq.github.io/surql-go/cli/)
+- [Upgrading](https://oneiriq.github.io/surql-go/migration/)
+
 ## Requirements
 
 - Go 1.26+
-- SurrealDB 2.0+
+- SurrealDB 3.0+ (CI runs against `surrealdb/surrealdb:v3.0.5`)
 
 ## License
 
