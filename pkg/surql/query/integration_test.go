@@ -330,6 +330,101 @@ func TestIntegration_TypeRecordTarget_CRUD(t *testing.T) {
 	}
 }
 
+func TestIntegration_AggregateRecords(t *testing.T) {
+	client, cleanup := newIntegrationClient(t)
+	defer cleanup()
+	cleanupTable(t, client, "surqlgo_agg")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	// Seed two rows per network so GROUP BY yields two buckets.
+	seeds := []struct {
+		network string
+		name    string
+		score   int
+	}{
+		{"alpha", "a1", 10},
+		{"alpha", "a2", 20},
+		{"beta", "b1", 40},
+		{"beta", "b2", 60},
+	}
+	for _, s := range seeds {
+		if _, err := CreateRecord(ctx, client, "surqlgo_agg", map[string]any{
+			"network": s.network, "name": s.name, "score": s.score,
+		}); err != nil {
+			t.Fatalf("seed %s: %v", s.name, err)
+		}
+	}
+
+	// Group-by test: total + count per network.
+	rows, err := AggregateRecords(ctx, client, AggregateOpts{
+		Table: "surqlgo_agg",
+		Select: map[string]types.Operator{
+			"count": CountAll(),
+			"total": MathSum("score"),
+		},
+		GroupBy: []string{"network"},
+	})
+	if err != nil {
+		t.Fatalf("AggregateRecords: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("want 2 rows, got %d: %+v", len(rows), rows)
+	}
+
+	// GROUP ALL variant yields exactly one aggregated row.
+	total, err := AggregateRecords(ctx, client, AggregateOpts{
+		Table: "surqlgo_agg",
+		Select: map[string]types.Operator{
+			"n":     CountAll(),
+			"total": MathSum("score"),
+		},
+		GroupAll: true,
+	})
+	if err != nil {
+		t.Fatalf("AggregateRecords GROUP ALL: %v", err)
+	}
+	if len(total) != 1 {
+		t.Fatalf("want 1 row, got %d: %+v", len(total), total)
+	}
+}
+
+func TestIntegration_BuilderSelectExprGroupAllExecute(t *testing.T) {
+	client, cleanup := newIntegrationClient(t)
+	defer cleanup()
+	cleanupTable(t, client, "surqlgo_builder_agg")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	for i := 0; i < 3; i++ {
+		if _, err := CreateRecord(ctx, client, "surqlgo_builder_agg", map[string]any{
+			"strength": 10 * (i + 1),
+		}); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+
+	// NewQuery().SelectExpr(...).From(...).GroupAll().Execute(...) — the
+	// fluent chain requested by the spec.
+	raw, err := NewQuery().
+		SelectExpr(CountAll(), MathMean("strength")).
+		From("surqlgo_builder_agg").
+		GroupAll().
+		Execute(ctx, client)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	row := ExtractOne(raw)
+	if row == nil {
+		t.Fatal("ExtractOne: nil row")
+	}
+	if _, ok := row["count"]; !ok {
+		t.Errorf("missing count key: %+v", row)
+	}
+}
+
 func TestIntegration_TypeThingTarget_Get(t *testing.T) {
 	client, cleanup := newIntegrationClient(t)
 	defer cleanup()
