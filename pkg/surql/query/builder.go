@@ -174,6 +174,68 @@ func (q Query) Select(fields []string) Query {
 	return out
 }
 
+// SelectExpr starts a SELECT query whose projection consists of the
+// supplied [types.SurrealFn] function factories (or any other
+// [types.Operator] implementer). Unlike [Query.Select] which renders
+// each field as a plain identifier, SelectExpr emits each expression's
+// SurrealQL form verbatim — enabling aggregations such as
+// `SELECT count(), math::mean(strength) FROM t GROUP ALL`.
+//
+// Pass zero expressions to select `*` (matching [Query.Select]'s
+// empty-slice behaviour).
+func (q Query) SelectExpr(exprs ...types.Operator) Query {
+	out := q.clone()
+	out.Operation = OpSelect
+	if len(exprs) == 0 {
+		out.Fields = []string{"*"}
+		return out
+	}
+	rendered := make([]string, len(exprs))
+	for i, e := range exprs {
+		rendered[i] = e.ToSurql()
+	}
+	out.Fields = rendered
+	return out
+}
+
+// SelectAliased is SelectExpr with per-expression aliases. The map's
+// insertion order is not preserved in Go, so aliases are emitted in
+// sorted-key order for deterministic output — matching renderDataObject.
+//
+// Accepts any [types.Operator] implementation so both the SurrealFn
+// factories in functions.go and the Expression helpers in
+// expressions.go compose through the same interface.
+func (q Query) SelectAliased(fields map[string]types.Operator) Query {
+	out := q.clone()
+	out.Operation = OpSelect
+	if len(fields) == 0 {
+		out.Fields = []string{"*"}
+		return out
+	}
+	keys := make([]string, 0, len(fields))
+	for k := range fields {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	rendered := make([]string, len(keys))
+	for i, k := range keys {
+		rendered[i] = fields[k].ToSurql() + " AS " + k
+	}
+	out.Fields = rendered
+	return out
+}
+
+// From is an alias for [Query.FromTable] that panics on validation
+// error, matching the fluent `NewQuery().Select(...).From(...)` shape.
+// Prefer [Query.FromTable] when caller code needs to surface the error.
+func (q Query) From(table string) Query {
+	out, err := q.FromTable(table)
+	if err != nil {
+		panic(err)
+	}
+	return out
+}
+
 // FromTable sets the table (or record id) the query targets. Returns
 // ErrValidation when the table portion is not a safe identifier.
 func (q Query) FromTable(table string) (Query, error) {
