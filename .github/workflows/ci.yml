@@ -29,7 +29,7 @@ concurrency:
 jobs:
   lint:
     name: golangci-lint
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     # golangci-lint v2.1.x is built with Go 1.24 and panics ("package
     # requires newer Go version go1.26") when linting a module with
     # `go 1.26` in go.mod. Marked continue-on-error until a
@@ -90,7 +90,7 @@ jobs:
 
   integration:
     name: Integration
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v6
 
@@ -133,7 +133,7 @@ jobs:
 
   goreleaser-check:
     name: goreleaser check
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.base_ref, 'release/')
     steps:
       - uses: actions/checkout@v6
