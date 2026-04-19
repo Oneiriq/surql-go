@@ -164,6 +164,23 @@ func GetAppliedMigrations(ctx context.Context, client *connection.DatabaseClient
 	return migrations, nil
 }
 
+// GetAppliedVersions returns the set of version strings for every applied
+// migration, backed by GetAppliedMigrations. The returned map is suitable
+// for O(1) membership tests — Go's idiomatic "set" shape.
+//
+// Mirrors surql-py's `get_applied_versions`.
+func GetAppliedVersions(ctx context.Context, client *connection.DatabaseClient) (map[string]struct{}, error) {
+	migrations, err := GetAppliedMigrations(ctx, client)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]struct{}, len(migrations))
+	for _, m := range migrations {
+		out[m.Version] = struct{}{}
+	}
+	return out, nil
+}
+
 // IsMigrationApplied reports whether the given version has a history entry.
 func IsMigrationApplied(ctx context.Context, client *connection.DatabaseClient, version string) (bool, error) {
 	if client == nil {

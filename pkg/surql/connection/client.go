@@ -344,6 +344,44 @@ func (c *DatabaseClient) Delete(ctx context.Context, target string) (any, error)
 	return *res, nil
 }
 
+// Info returns the authenticated session record — equivalent to SurrealQL's
+// `RETURN $auth`. For root / namespace / database sessions this resolves to
+// nil; for scope / record sessions it carries the record's contents.
+//
+// The SDK's dedicated `db.Info` RPC is *not* used here because
+// surrealdb.go v1.4.0 panics with a nil-pointer dereference when the server
+// returns a null result (non-scope sessions). Using a raw query ensures we
+// never leak that panic to callers. Py's `client.info` is implemented the
+// same way.
+func (c *DatabaseClient) Info(ctx context.Context) (map[string]any, error) {
+	raw, err := c.Query(ctx, "RETURN $auth;")
+	if err != nil {
+		return nil, surqlerrors.Wrap(surqlerrors.ErrConnection, "info failed", err)
+	}
+	// Unwrap the per-statement envelope produced by Query: []any of
+	// {status, time, result}. A null result (root/ns/db sessions) becomes
+	// a (nil, nil) return — matches py and keeps the zero-auth case cheap.
+	arr, ok := raw.([]any)
+	if !ok || len(arr) == 0 {
+		return nil, nil
+	}
+	envelope, ok := arr[0].(map[string]any)
+	if !ok {
+		return nil, nil
+	}
+	result, has := envelope["result"]
+	if !has || result == nil {
+		return nil, nil
+	}
+	if m, ok := result.(map[string]any); ok {
+		return m, nil
+	}
+	// Scalar or slice result — surface under the conventional "value" key
+	// so callers have a deterministic shape to inspect. Mirrors the
+	// pushValue helper in pkg/surql/query/results.go.
+	return map[string]any{"value": result}, nil
+}
+
 // Health performs a lightweight RPC (SDK version probe) to check the
 // connection is responsive. Returns (true, nil) on success.
 func (c *DatabaseClient) Health(ctx context.Context) (bool, error) {

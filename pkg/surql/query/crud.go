@@ -226,6 +226,27 @@ func QueryRecords(ctx context.Context, client *connection.DatabaseClient, table 
 	return ExtractResult(raw), nil
 }
 
+// QueryRecordsWrapped runs QueryRecords and returns the resulting rows
+// wrapped in a ListResult, retaining the Limit/Offset hints from opts so
+// downstream callers can inspect pagination metadata without re-threading
+// them manually. Mirrors surql-py's `query_records_wrapped`.
+func QueryRecordsWrapped(ctx context.Context, client *connection.DatabaseClient, table string, opts QueryOptions) (ListResult[map[string]any], error) {
+	rows, err := QueryRecords(ctx, client, table, opts)
+	if err != nil {
+		return ListResult[map[string]any]{}, err
+	}
+	var limit, offset *uint64
+	if opts.Limit != nil {
+		v := uint64(*opts.Limit)
+		limit = &v
+	}
+	if opts.Offset != nil {
+		v := uint64(*opts.Offset)
+		offset = &v
+	}
+	return Records(rows, nil, limit, offset), nil
+}
+
 // CountRecords returns `count()` for table, optionally scoped by a
 // condition (string or types.Operator).
 func CountRecords(ctx context.Context, client *connection.DatabaseClient, table string, condition any) (int64, error) {
@@ -279,12 +300,36 @@ func Exists(ctx context.Context, client *connection.DatabaseClient, table string
 	return rec != nil, nil
 }
 
-// isTableMissingError reports whether the error is SurrealDB's
-// "table '...' does not exist" response. v2.x treated missing tables as
-// empty results; v3+ returns this error. Callers that want an empty
-// result to be equivalent to "no records" use this check.
+// tableMissingNeedles is the set of case-insensitive substrings that
+// SurrealDB surfaces when a table-level operation targets a table that
+// has not been materialised. v3.0.x returns "The table '...' does not
+// exist"; the trailing "does not exist" fragment is kept as a
+// forward-compat fallback in case future versions rephrase the message.
+// "table not found" is included defensively for the same reason.
+var tableMissingNeedles = []string{
+	"does not exist",  // v3.0.x: "The table '...' does not exist"
+	"table not found", // hypothetical future wording
+}
+
+// isTableMissingError reports whether err is SurrealDB's "table does
+// not exist" response. v2.x treated missing tables as empty results;
+// v3+ returns an error. Callers that want an empty result to be
+// equivalent to "no records" use this check.
+//
+// The match is case-insensitive against the substrings listed in
+// tableMissingNeedles. See pkg/surql/query/crud_integration_test.go for
+// the regression test pinning us to the v3 server wording.
 func isTableMissingError(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "does not exist")
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	for _, needle := range tableMissingNeedles {
+		if strings.Contains(msg, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 // First returns the first record matching the filter options, or nil.
