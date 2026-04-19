@@ -71,14 +71,18 @@ nav:
   - Getting Started:
       - Installation: installation.md
       - Quick Start: quickstart.md
+      - Features: features.md
   - Guides:
       - Schema Definition: schema.md
       - Migrations: migrations.md
       - Query Builder: queries.md
+      - Query UX Helpers: query-ux.md
       - Query Hints: query_hints.md
+      - v3 Patterns: v3-patterns.md
       - Visualization: visualization.md
   - Reference:
       - CLI: cli.md
+      - Upgrading: migration.md
       - API (pkg.go.dev): https://pkg.go.dev/github.com/Oneiriq/surql-go
   - Changelog: changelog.md
 
