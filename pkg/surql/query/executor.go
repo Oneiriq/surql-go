@@ -85,6 +85,23 @@ func FetchMany[T any](ctx context.Context, client *connection.DatabaseClient, q 
 	return Records[T](items, nil, limit, offset), nil
 }
 
+// FetchRecord executes q and wraps the first decoded row in a RecordResult.
+// Returns a RecordResult whose Exists flag is false when the query yielded
+// no rows, mirroring surql-py's `fetch_record`.
+func FetchRecord[T any](ctx context.Context, client *connection.DatabaseClient, q Query) (RecordResult[T], error) {
+	rec, err := FetchOne[T](ctx, client, q)
+	if err != nil {
+		return RecordResult[T]{}, err
+	}
+	return Record(rec, rec != nil), nil
+}
+
+// FetchRecords executes q and wraps the decoded rows in a ListResult that
+// retains the Limit/Offset hints from q. Mirrors surql-py's `fetch_records`.
+func FetchRecords[T any](ctx context.Context, client *connection.DatabaseClient, q Query) (ListResult[T], error) {
+	return FetchMany[T](ctx, client, q)
+}
+
 // ExecuteRawTyped runs a raw SurrealQL query and decodes every row into T.
 func ExecuteRawTyped[T any](ctx context.Context, client *connection.DatabaseClient, surql string, vars map[string]any) ([]T, error) {
 	raw, err := ExecuteRaw(ctx, client, surql, vars)
