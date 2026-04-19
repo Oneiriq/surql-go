@@ -12,19 +12,24 @@ Define schemas, generate migrations, build queries, and perform typed CRUD
 
 - **Code-First Migrations** -- Schema changes defined in code with automatic
   migration generation. Files use a portable `.surql` format with
-  `-- @up` / `-- @down` section markers.
+  `-- @up` / `-- @down` section markers. Squash, watcher, and auto-snapshot
+  hooks included.
 - **Type-Safe Query Builder** -- Immutable fluent API with operator-typed
-  `Where`, expression helpers, and `encoding/json` struct tags.
+  `Where`, expression helpers, `SelectExpr` / `SelectAliased` aggregations,
+  and `encoding/json` struct tags.
+- **v3 Transactions** -- Native interactive `BEGIN` / `COMMIT` / `ROLLBACK`
+  via `DatabaseClient.Begin`, plus raw record-id targets
+  (`types.TypeRecord` / `types.TypeThing`) and `GROUP ALL` aggregation.
 - **Vector Search** -- HNSW and MTREE index support with 8 distance metrics
   and EFC/M tuning.
 - **Graph Traversal** -- Native SurrealDB graph features with edge
-  relationships.
+  relationships + fluent `GraphQuery` builder.
 - **Schema Visualization** -- Mermaid, GraphViz, and ASCII diagrams with
   modern / dark / forest / minimal themes.
-- **CLI Tools** -- Migrations, schema inspection, validation, database
-  management *(planned)*.
-- **Stdlib-First** -- Minimal dependencies; stdlib `net/http` + official
-  SurrealDB SDK *(planned for 0.2)*.
+- **CLI Tools** -- Full `surql` binary for migrations, schema inspection,
+  validation, database management, and multi-environment orchestration.
+- **Cache + Orchestration** -- Memory + Redis cache backends,
+  sequential / parallel / rolling / canary deployment strategies.
 
 ## Quick Start
 
@@ -57,15 +62,20 @@ func main() {
 
 - **[Installation](installation.md)** -- getting the module installed.
 - **[Quick Start](quickstart.md)** -- your first schema and migration.
+- **[Features & Package Layout](features.md)** -- per-package surface map.
 - **[Schema Definition](schema.md)** -- the schema DSL in depth.
 - **[Migrations](migrations.md)** -- diff-based migration generation, file
   format, and versioning.
 - **[Query Builder](queries.md)** -- immutable fluent queries.
+- **[Query UX](query-ux.md)** -- first-class helpers added in v0.2.0.
 - **[Query Hints](query_hints.md)** -- INDEX / PARALLEL / TIMEOUT / FETCH /
   EXPLAIN hints.
+- **[v3 Patterns](v3-patterns.md)** -- interactive transactions,
+  `GROUP ALL`, raw record-id targets, known upstream SDK limitations.
 - **[Visualization](visualization.md)** -- Mermaid / GraphViz / ASCII
   diagrams.
-- **[CLI](cli.md)** -- the `surql` binary *(planned)*.
+- **[CLI Reference](cli.md)** -- the `surql` subcommand surface.
+- **[Upgrading](migration.md)** -- version-to-version upgrade notes.
 - **[Changelog](changelog.md)** -- release history.
 - **[API reference](https://pkg.go.dev/github.com/Oneiriq/surql-go)** --
   generated godoc.
