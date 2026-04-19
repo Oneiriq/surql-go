@@ -20,5 +20,11 @@
 //     DeleteRecords, QueryRecords, CountRecords, Exists, First, Last) with a
 //     QueryOptions value type for filters and pagination
 //   - the generic typed variants (CreateTyped, GetTyped, QueryTyped,
-//     UpdateTyped, UpsertTyped) that round-trip through encoding/json.
+//     UpdateTyped, UpsertTyped) that round-trip through encoding/json
+//   - batch helpers (UpsertMany, InsertMany, RelateMany, DeleteMany) plus
+//     pure builders (BuildUpsertQuery, BuildRelateQuery)
+//   - graph traversal helpers (Traverse, TraverseWithDepth, CreateRelation,
+//     RemoveRelation, GetOutgoingEdges, GetIncomingEdges, GetRelatedRecords,
+//     CountRelated, ShortestPath) and the fluent GraphQuery builder
+//     (NewGraphQuery, Out/In/Both/To/Where/Select/Limit/Fetch/Count/Exists).
 package query
