@@ -226,6 +226,27 @@ func QueryRecords(ctx context.Context, client *connection.DatabaseClient, table 
 	return ExtractResult(raw), nil
 }
 
+// QueryRecordsWrapped runs QueryRecords and returns the resulting rows
+// wrapped in a ListResult, retaining the Limit/Offset hints from opts so
+// downstream callers can inspect pagination metadata without re-threading
+// them manually. Mirrors surql-py's `query_records_wrapped`.
+func QueryRecordsWrapped(ctx context.Context, client *connection.DatabaseClient, table string, opts QueryOptions) (ListResult[map[string]any], error) {
+	rows, err := QueryRecords(ctx, client, table, opts)
+	if err != nil {
+		return ListResult[map[string]any]{}, err
+	}
+	var limit, offset *uint64
+	if opts.Limit != nil {
+		v := uint64(*opts.Limit)
+		limit = &v
+	}
+	if opts.Offset != nil {
+		v := uint64(*opts.Offset)
+		offset = &v
+	}
+	return Records(rows, nil, limit, offset), nil
+}
+
 // CountRecords returns `count()` for table, optionally scoped by a
 // condition (string or types.Operator).
 func CountRecords(ctx context.Context, client *connection.DatabaseClient, table string, condition any) (int64, error) {
