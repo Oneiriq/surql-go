@@ -7,8 +7,10 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 
 	surqlerrors "github.com/Oneiriq/surql-go/pkg/surql/errors"
+	"github.com/Oneiriq/surql-go/pkg/surql/schema"
 )
 
 // DriftSeverity categorises a single DriftIssue. The zero value
@@ -297,4 +299,138 @@ func GeneratePreCommitConfig(schemaPath string, failOnDrift bool) string {
 			"        pass_filenames: false\n",
 		schemaPath, failFlag,
 	)
+}
+
+// ---------------------------------------------------------------------------
+// Auto-snapshot hooks
+// ---------------------------------------------------------------------------
+
+// autoSnapshotEnabled is the global kill switch toggled by
+// EnableAutoSnapshots / DisableAutoSnapshots. We use an atomic int32
+// (0 == off, 1 == on) so readers on the hot migration path can check it
+// with a single atomic load; writers are rare and come from test setups
+// or application bootstrap.
+var autoSnapshotEnabled atomic.Int32
+
+// EnableAutoSnapshots turns on automatic snapshot creation after a
+// migration is applied. Subsequent CreateSnapshotOnMigration calls will
+// persist a SchemaSnapshot to the caller-supplied directory.
+//
+// The state is process-global, matching surql-py's AUTO_SNAPSHOT_ENABLED
+// flag. It is safe to call concurrently from multiple goroutines.
+func EnableAutoSnapshots() {
+	autoSnapshotEnabled.Store(1)
+}
+
+// DisableAutoSnapshots turns off automatic snapshot creation. Queued
+// writes that have already started are unaffected.
+func DisableAutoSnapshots() {
+	autoSnapshotEnabled.Store(0)
+}
+
+// IsAutoSnapshotEnabled reports whether auto-snapshot creation is
+// currently enabled. Callers can gate their own snapshot emission on
+// this flag to mirror CreateSnapshotOnMigration's behaviour.
+func IsAutoSnapshotEnabled() bool {
+	return autoSnapshotEnabled.Load() == 1
+}
+
+// SnapshotHook captures optional callbacks that fire around an
+// automatic snapshot creation. Before runs immediately before the
+// snapshot is built; returning a non-nil error aborts the operation.
+// After runs after a successful Store, receiving the freshly written
+// file path and the snapshot itself.
+//
+// The Registry field supplies the schema registry to snapshot from;
+// it must be non-nil on invocation of CreateSnapshotOnMigration even
+// when both callbacks are nil.
+//
+// The zero value is a no-op wrapper suitable for callers that only
+// need the default pre/post hook semantics.
+type SnapshotHook struct {
+	// Registry is the schema registry to snapshot. Required.
+	Registry *schema.SchemaRegistry
+	// Before, when non-nil, runs before the snapshot is created. A
+	// non-nil return aborts the operation.
+	Before func(ctx context.Context, m Migration) error
+	// After, when non-nil, runs after the snapshot is successfully
+	// stored. path is the absolute filename on disk.
+	After func(ctx context.Context, m Migration, snapshot SchemaSnapshot, path string) error
+}
+
+// CreateSnapshotOnMigration builds and persists a SchemaSnapshot for
+// the just-applied migration, provided auto-snapshots are enabled.
+//
+// When IsAutoSnapshotEnabled returns false the call is a silent no-op
+// that returns an empty path and nil error — mirroring surql-py's
+// behaviour. When enabled, it runs any configured pre hook, calls
+// CreateSnapshot + StoreSnapshot with dir as the destination, and then
+// runs the post hook.
+//
+// dir must name an existing (or creatable) directory; the snapshot file
+// is written under "<dir>/<version>.snapshot.json". Failures at any
+// stage return a wrapped ErrMigrationHistory so the caller has a single
+// sentinel to match against.
+func CreateSnapshotOnMigration(
+	ctx context.Context,
+	dir string,
+	migration Migration,
+	hook SnapshotHook,
+) (string, error) {
+	if !IsAutoSnapshotEnabled() {
+		return "", nil
+	}
+
+	if err := ctx.Err(); err != nil {
+		return "", surqlerrors.Wrap(surqlerrors.ErrMigrationHistory,
+			"context cancelled before auto-snapshot", err)
+	}
+	if strings.TrimSpace(dir) == "" {
+		return "", surqlerrors.New(surqlerrors.ErrValidation,
+			"snapshot directory must not be empty")
+	}
+	if hook.Registry == nil {
+		return "", surqlerrors.New(surqlerrors.ErrValidation,
+			"SnapshotHook.Registry must not be nil")
+	}
+
+	if hook.Before != nil {
+		if err := hook.Before(ctx, migration); err != nil {
+			return "", surqlerrors.Wrap(surqlerrors.ErrMigrationHistory,
+				"pre-snapshot hook failed", err)
+		}
+	}
+
+	description := migration.Description
+	if description == "" {
+		description = fmt.Sprintf("auto-snapshot after %s", migration.Version)
+	}
+
+	snapshot, err := CreateSnapshot(hook.Registry, description)
+	if err != nil {
+		return "", surqlerrors.Wrap(surqlerrors.ErrMigrationHistory,
+			"failed to create snapshot", err)
+	}
+
+	if err := StoreSnapshot(snapshot, dir); err != nil {
+		return "", surqlerrors.Wrap(surqlerrors.ErrMigrationHistory,
+			"failed to store snapshot", err)
+	}
+
+	// Recompute the on-disk path so callers can log or reference it.
+	path, resolveErr := resolveSnapshotPath(dir, snapshot.Version)
+	if resolveErr != nil {
+		// StoreSnapshot succeeded, so the file exists; if the resolver
+		// fails at this point the caller still gets a valid result,
+		// just without the path.
+		path = ""
+	}
+
+	if hook.After != nil {
+		if err := hook.After(ctx, migration, snapshot, path); err != nil {
+			return path, surqlerrors.Wrap(surqlerrors.ErrMigrationHistory,
+				"post-snapshot hook failed", err)
+		}
+	}
+	return path, nil
 }
