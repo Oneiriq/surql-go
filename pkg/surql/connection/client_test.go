@@ -146,6 +146,75 @@ func TestBackoffDelay_MinFloor(t *testing.T) {
 	}
 }
 
+func TestConnect_RejectsEmbeddedSchemes(t *testing.T) {
+	// Embedded URL schemes parse and validate (protocol detection still
+	// works) but cannot actually be opened because surrealdb.go ships no
+	// embedded engine. Connect must fail fast with ErrConnection and a
+	// human-readable message pointing to the upstream issue, rather than
+	// retrying the cryptic "embedded database not enabled" error returned
+	// by the SDK itself.
+	cases := []struct {
+		name string
+		url  string
+	}{
+		{"memory", "memory://"},
+		{"mem", "mem://"},
+		{"file", "file:///tmp/surql-test.db"},
+		{"surrealkv", "surrealkv:///tmp/surql-test.skv"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.DBURL = tc.url
+			cfg.EnableLiveQueries = false // HTTP/embedded parity for validation
+			c, err := NewDatabaseClient(cfg)
+			if err != nil {
+				t.Fatalf("NewDatabaseClient(%s): %v", tc.url, err)
+			}
+
+			start := time.Now()
+			err = c.Connect(context.Background())
+			elapsed := time.Since(start)
+
+			if err == nil {
+				t.Fatalf("%s: expected Connect to fail", tc.url)
+			}
+			if !errors.Is(err, surqlerrors.ErrConnection) {
+				t.Errorf("%s: want ErrConnection, got %v", tc.url, err)
+			}
+			// Ensure the fail-fast happens: no retry/backoff sleeps.
+			if elapsed > 100*time.Millisecond {
+				t.Errorf("%s: took %v; should short-circuit before retry loop", tc.url, elapsed)
+			}
+		})
+	}
+}
+
+func TestProtocol_IsSupported(t *testing.T) {
+	// Remote transports are supported.
+	for _, p := range []Protocol{
+		ProtocolWebSocket,
+		ProtocolWebSocketSecure,
+		ProtocolHTTP,
+		ProtocolHTTPS,
+	} {
+		if !p.IsSupported() {
+			t.Errorf("%v should be supported", p)
+		}
+	}
+	// Embedded schemes are not supported until surrealdb.go ships an
+	// embedded engine (upstream issue 197).
+	for _, p := range []Protocol{
+		ProtocolMemory,
+		ProtocolFile,
+		ProtocolSurrealKV,
+	} {
+		if p.IsSupported() {
+			t.Errorf("%v should not be supported (embedded upstream blocker)", p)
+		}
+	}
+}
+
 func TestConnect_CancelsOnContext(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.DBURL = "ws://127.0.0.1:1/rpc" // unreachable

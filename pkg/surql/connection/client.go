@@ -57,11 +57,26 @@ func (c *DatabaseClient) IsConnected() bool {
 //
 // The provided context cancels the entire retry window; individual attempts
 // are not further subdivided.
+//
+// Embedded URL schemes (mem://, memory://, file://, surrealkv://) are parsed
+// by the library but not currently openable: the upstream surrealdb.go SDK
+// has no embedded engine linked in (see
+// https://github.com/surrealdb/surrealdb.go/issues/197). Connect returns
+// ErrConnection immediately for those schemes instead of retrying the
+// upstream "embedded database not enabled" error.
 func (c *DatabaseClient) Connect(ctx context.Context) error {
 	if c.IsConnected() {
 		if err := c.Disconnect(); err != nil {
 			return err
 		}
+	}
+
+	if proto, err := c.cfg.Protocol(); err == nil && !proto.IsSupported() {
+		return surqlerrors.Newf(surqlerrors.ErrConnection,
+			"embedded scheme %q is not supported: surrealdb.go has no embedded "+
+				"engine linked in (upstream https://github.com/surrealdb/surrealdb.go/issues/197). "+
+				"Use ws:// / wss:// / http:// / https:// to connect to a running SurrealDB instance",
+			proto)
 	}
 
 	var lastErr error

@@ -9,6 +9,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- `connection.Protocol.IsSupported()` reports whether the currently-linked
+  `surrealdb.go` SDK can actually open a connection for the scheme.
+  Remote transports (`ws://`, `wss://`, `http://`, `https://`) return
+  true; embedded schemes (`memory://`, `mem://`, `file://`,
+  `surrealkv://`) return false pending
+  [surrealdb.go#197](https://github.com/surrealdb/surrealdb.go/issues/197).
 - `migration/versioning` -- `SchemaSnapshot` (extended with `Version`,
   `Timestamp`, `Description`, `Accesses`), `VersionGraph` DAG with
   ancestors/descendants/path, and JSON-file snapshot persistence.
@@ -39,6 +45,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   -- operator structs + `RecordID` with angle-bracket syntax + reserved
   words + ISO-8601 datetime coercion.
 - `errors` -- sentinel errors + typed `SurqlError` with `errors.Is`/`As`.
+
+### Changed
+
+- `DatabaseClient.Connect` now fails fast with a descriptive
+  `ErrConnection` when passed an embedded URL scheme (`memory://`,
+  `mem://`, `file://`, `surrealkv://`), instead of retrying the upstream
+  `"embedded database not enabled"` error from `surrealdb.go`. Remote
+  transports are unaffected. README grew a protocol-support table
+  documenting the current state (#95).
 
 ### Notes
 
