@@ -64,6 +64,18 @@ func (p Protocol) IsEmbedded() bool {
 	return p == ProtocolMemory || p == ProtocolFile || p == ProtocolSurrealKV
 }
 
+// IsSupported reports whether surql-go can actually open a connection for
+// this protocol with the currently-linked surrealdb.go SDK.
+//
+// The SDK parses mem:// / memory:// / file:// / surrealkv:// URLs but its
+// FromEndpointURLString rejects them with "embedded database not enabled"
+// (see upstream https://github.com/surrealdb/surrealdb.go/issues/197). Those
+// schemes therefore return false here until the SDK ships an embedded
+// engine. Remote transports are always supported.
+func (p Protocol) IsSupported() bool {
+	return !p.IsEmbedded()
+}
+
 // ConnectionConfig is the SurrealDB connection configuration.
 //
 // Field names follow the Python port (DBURL, DBNS, DB, ...) for

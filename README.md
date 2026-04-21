@@ -114,6 +114,36 @@ Key pages:
 - [CLI Reference](https://oneiriq.github.io/surql-go/cli/)
 - [Upgrading](https://oneiriq.github.io/surql-go/migration/)
 
+## Supported connection protocols
+
+`ConnectionConfig.DBURL` accepts all URL schemes the upstream
+[`surrealdb.go`](https://github.com/surrealdb/surrealdb.go) SDK parses, but
+only the remote transports can actually open a connection. Embedded schemes
+are parsed (so protocol detection still works) and then rejected at
+`DatabaseClient.Connect` with `ErrConnection` pending upstream support.
+
+| Scheme         | Status       | Notes                                                                                              |
+| -------------- | ------------ | -------------------------------------------------------------------------------------------------- |
+| `ws://`        | Supported    | WebSocket. Full feature set including live queries.                                                |
+| `wss://`       | Supported    | TLS WebSocket. Full feature set including live queries.                                            |
+| `http://`      | Supported    | HTTP RPC. No live queries.                                                                         |
+| `https://`     | Supported    | TLS HTTP RPC. No live queries.                                                                     |
+| `memory://`    | Not yet      | Parsed; `Connect` returns `ErrConnection`. Blocked by upstream [surrealdb.go#197].                 |
+| `mem://`       | Not yet      | Alias of `memory://`.                                                                              |
+| `file://`      | Not yet      | Parsed; `Connect` returns `ErrConnection`. Blocked by upstream [surrealdb.go#197].                 |
+| `surrealkv://` | Not yet      | Parsed; `Connect` returns `ErrConnection`. Blocked by upstream [surrealdb.go#197].                 |
+
+[surrealdb.go#197]: https://github.com/surrealdb/surrealdb.go/issues/197
+
+Use `connection.Protocol.IsSupported()` to check programmatically whether
+a configured URL can open. The library will re-enable embedded schemes
+automatically as soon as the SDK ships an embedded engine -- callers will
+not need to change any code.
+
+Downstream consumers that need an offline / embedded store today (for
+example [kushtaka-cli](https://github.com/Oneiriq/kushtakas)'s local
+cache) should keep their file-based fallback until upstream lands.
+
 ## Requirements
 
 - Go 1.26+
