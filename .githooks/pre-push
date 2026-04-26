@@ -26,8 +26,30 @@ go vet ./...
 echo "[pre-push] go build ./..."
 go build ./...
 
+# golangci-lint: matches the `lint` job in .github/workflows/ci.yml.
+# That job is `continue-on-error: true` because golangci-lint v2.1.x is
+# built with Go 1.24 and panics on `go 1.26` modules. We mirror that
+# stance locally: run if installed, never hard-block on it. Set
+# SURQL_PRE_PUSH_LINT=0 to skip entirely.
+if [[ "${SURQL_PRE_PUSH_LINT:-1}" == "1" ]] && command -v golangci-lint >/dev/null 2>&1; then
+  echo "[pre-push] golangci-lint run (non-blocking; mirrors CI continue-on-error)"
+  golangci-lint run || echo "[pre-push] golangci-lint reported issues (non-blocking)"
+else
+  echo "[pre-push] skipping golangci-lint (binary not found or SURQL_PRE_PUSH_LINT=0)"
+fi
+
 echo "[pre-push] go test ./... -race -count=1"
 go test ./... -race -count=1
+
+# govulncheck: matches .github/workflows/audit.yml. Runs on a path-filter
+# in CI (go.mod / go.sum changes) and on a nightly cron. Run locally if
+# installed; install with `go install golang.org/x/vuln/cmd/govulncheck@latest`.
+if command -v govulncheck >/dev/null 2>&1; then
+  echo "[pre-push] govulncheck ./..."
+  govulncheck ./...
+else
+  echo "[pre-push] skipping govulncheck (binary not found; install with: go install golang.org/x/vuln/cmd/govulncheck@latest)"
+fi
 
 if [[ "${SURQL_PRE_PUSH_INTEGRATION:-0}" == "1" ]]; then
   echo "[pre-push] go test -tags=integration ./... (SURQL_PRE_PUSH_INTEGRATION=1)"
