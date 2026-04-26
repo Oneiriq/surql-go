@@ -47,6 +47,12 @@ jobs:
   nightly-lint:
     name: Nightly golangci-lint
     runs-on: ubuntu-latest
+    # golangci-lint v2.1.x is built with Go 1.24 and panics ("package
+    # requires newer Go version go1.26") when linting a module with
+    # `go 1.26` in go.mod. Marked continue-on-error to match the
+    # mitigation already in place in ci.yml until a golangci-lint
+    # release with Go 1.26 support ships.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
         with:
