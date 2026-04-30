@@ -5,6 +5,9 @@ on:
     - cron: '0 6 * * *'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   nightly-ci:
     name: Nightly sanity (${{ matrix.os }}, Go ${{ matrix.go }})
