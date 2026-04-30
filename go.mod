@@ -8,7 +8,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.3.0
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/spf13/cobra v1.10.2
-	github.com/surrealdb/surrealdb.go v1.4.0
+	github.com/surrealdb/surrealdb.go v1.4.1-0.20260430110252-aef39d3a439f
 	gopkg.in/yaml.v3 v3.0.1
 )
 
