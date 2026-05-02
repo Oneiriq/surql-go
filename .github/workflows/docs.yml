@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, aur0]
     steps:
       - uses: actions/checkout@v6
 
@@ -46,7 +46,7 @@ jobs:
 
   deploy:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, aur0]
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

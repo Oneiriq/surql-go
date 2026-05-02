@@ -16,7 +16,7 @@ permissions:
 jobs:
   lint:
     name: golangci-lint
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, aur0]
     # golangci-lint v2.1.x is built with Go 1.24 and panics ("package
     # requires newer Go version go1.26") when linting a module with
     # `go 1.26` in go.mod. Marked continue-on-error until a
@@ -38,12 +38,13 @@ jobs:
           version: v2.1.6
 
   quality:
-    name: Lint and Test (${{ matrix.os }}, Go ${{ matrix.go }})
-    runs-on: ${{ matrix.os }}
+    # macOS coverage moved to nightly.yml; PR-time runs Linux only on the
+    # aur0 self-hosted runner to avoid burning GitHub-hosted minutes.
+    name: Lint and Test (Go ${{ matrix.go }})
+    runs-on: [self-hosted, aur0]
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
         go: ['1.26', 'stable']
     steps:
       - uses: actions/checkout@v6
@@ -75,7 +76,7 @@ jobs:
 
   integration:
     name: Integration
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, aur0]
     steps:
       - uses: actions/checkout@v6
 
@@ -118,7 +119,7 @@ jobs:
 
   goreleaser-check:
     name: goreleaser check
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, aur0]
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.base_ref, 'release/')
     steps:
       - uses: actions/checkout@v6

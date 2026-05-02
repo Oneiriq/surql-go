@@ -16,7 +16,7 @@ permissions:
 jobs:
   coverage:
     name: go test -coverprofile
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, aur0]
     steps:
       - uses: actions/checkout@v6
 
