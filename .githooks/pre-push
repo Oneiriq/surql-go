@@ -12,6 +12,15 @@
 
 set -euo pipefail
 
+# Strip git's per-invocation env so any nested git commands (e.g. tests in
+# pkg/surql/migration that init throwaway repos under t.TempDir()) cannot
+# accidentally target the host worktree's index/objects. Without this the
+# parent `git push` exports GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE/
+# GIT_OBJECT_DIRECTORY into the hook's environment, which Go subprocesses
+# inherit verbatim — and `git add` inside a test fixture then stages files
+# into the *host* repo. See issue #100.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_NAMESPACE GIT_PREFIX
+
 echo "[pre-push] gofmt -l ."
 unformatted=$(gofmt -l .)
 if [[ -n "$unformatted" ]]; then

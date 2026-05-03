@@ -327,10 +327,43 @@ func runOrFatal(t *testing.T, dir, name string, args ...string) {
 	t.Helper()
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
+	cmd.Env = sanitizedGitEnv()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("%s %s: %v: %s", name, strings.Join(args, " "), err, out)
 	}
+}
+
+// sanitizedGitEnv returns os.Environ() with every GIT_* variable that pins
+// git to a specific repo/index/object-dir stripped out. Without this, tests
+// invoked from a parent `git push` (e.g. via .githooks/pre-push) inherit
+// GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE / GIT_OBJECT_DIRECTORY and any
+// `git add` they shell out to stages into the *host* worktree instead of the
+// throwaway t.TempDir() repo. See issue #100.
+func sanitizedGitEnv() []string {
+	leaky := map[string]struct{}{
+		"GIT_DIR":              {},
+		"GIT_WORK_TREE":        {},
+		"GIT_INDEX_FILE":       {},
+		"GIT_OBJECT_DIRECTORY": {},
+		"GIT_COMMON_DIR":       {},
+		"GIT_NAMESPACE":        {},
+		"GIT_PREFIX":           {},
+	}
+	src := os.Environ()
+	out := make([]string, 0, len(src))
+	for _, kv := range src {
+		eq := strings.IndexByte(kv, '=')
+		if eq < 0 {
+			out = append(out, kv)
+			continue
+		}
+		if _, drop := leaky[kv[:eq]]; drop {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
 }
 
 func stageFile(t *testing.T, repo, relPath, body string) {
@@ -659,5 +692,108 @@ func TestGetStagedSchemaFiles_BlankLinesIgnored(t *testing.T) {
 	}
 	if len(files) != 1 || files[0] != "schemas/real.go" {
 		t.Errorf("want [schemas/real.go], got %v", files)
+	}
+}
+
+// --- Regression: pre-push hook env leak (issue #100) ---
+
+// TestRunOrFatal_DoesNotLeakHostGitEnv simulates the scenario where a parent
+// `git push` exports GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE pointing at the
+// host repo. Before the fix, runOrFatal inherited those vars verbatim and any
+// nested `git init` / `git add` resolved them first, writing to the host
+// repo's index instead of the throwaway t.TempDir() repo.
+//
+// We assert two things:
+//  1. runOrFatal can still init+stage+commit inside the temp repo even when
+//     bogus GIT_* vars are in the ambient env.
+//  2. The bogus GIT_DIR location was NOT touched (no objects, no index).
+func TestRunOrFatal_DoesNotLeakHostGitEnv(t *testing.T) {
+	if !hasGit(t) {
+		t.Skip("git not available")
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping POSIX-flavoured env check on windows")
+	}
+
+	// "Host" repo: a separate temp dir that we point GIT_DIR at. If the leak
+	// resurfaces, git will write here instead of the test fixture below.
+	host := t.TempDir()
+	hostGitDir := filepath.Join(host, ".host-git")
+	if err := os.MkdirAll(hostGitDir, 0o755); err != nil {
+		t.Fatalf("mkdir host: %v", err)
+	}
+
+	// Snapshot what the fake GIT_DIR contained before any nested git ran.
+	beforeEntries, err := os.ReadDir(hostGitDir)
+	if err != nil {
+		t.Fatalf("readdir host pre: %v", err)
+	}
+
+	// Pin the parent env to the bogus host. t.Setenv restores on cleanup.
+	t.Setenv("GIT_DIR", hostGitDir)
+	t.Setenv("GIT_WORK_TREE", host)
+	t.Setenv("GIT_INDEX_FILE", filepath.Join(hostGitDir, "index"))
+
+	// Now run the same kind of nested git ops the existing tests do. With the
+	// fix in place these go to the fixture; without it they would target the
+	// host GIT_DIR and either pollute it or fail.
+	fixture := initGitRepo(t, t.TempDir())
+	stageFile(t, fixture, "schemas/leak_check.go", "package schemas\n")
+
+	// Fixture must have a real .git directory of its own.
+	fixtureGit := filepath.Join(fixture, ".git")
+	if info, statErr := os.Stat(fixtureGit); statErr != nil || !info.IsDir() {
+		t.Fatalf("fixture .git missing (env leaked): stat=%v, info=%v", statErr, info)
+	}
+
+	// And the host GIT_DIR must remain exactly as we left it — no objects
+	// written, no index created — proving the env didn't leak through.
+	afterEntries, err := os.ReadDir(hostGitDir)
+	if err != nil {
+		t.Fatalf("readdir host post: %v", err)
+	}
+	if len(afterEntries) != len(beforeEntries) {
+		names := make([]string, 0, len(afterEntries))
+		for _, e := range afterEntries {
+			names = append(names, e.Name())
+		}
+		t.Fatalf("host GIT_DIR was written into (env leaked): %v", names)
+	}
+}
+
+// TestSanitizedGitEnv_StripsLeakyVars covers the helper directly so the
+// guarantee is tested without depending on an actual git invocation.
+func TestSanitizedGitEnv_StripsLeakyVars(t *testing.T) {
+	t.Setenv("GIT_DIR", "/tmp/should-be-stripped")
+	t.Setenv("GIT_WORK_TREE", "/tmp/should-be-stripped")
+	t.Setenv("GIT_INDEX_FILE", "/tmp/should-be-stripped/index")
+	t.Setenv("GIT_OBJECT_DIRECTORY", "/tmp/should-be-stripped/objects")
+	t.Setenv("GIT_COMMON_DIR", "/tmp/should-be-stripped/common")
+	t.Setenv("GIT_NAMESPACE", "leaky")
+	t.Setenv("GIT_PREFIX", "leaky/")
+	// A non-leaky GIT_* should pass through.
+	t.Setenv("GIT_AUTHOR_NAME", "preserved")
+
+	leakyKeys := []string{
+		"GIT_DIR=", "GIT_WORK_TREE=", "GIT_INDEX_FILE=", "GIT_OBJECT_DIRECTORY=",
+		"GIT_COMMON_DIR=", "GIT_NAMESPACE=", "GIT_PREFIX=",
+	}
+	got := sanitizedGitEnv()
+	for _, kv := range got {
+		for _, prefix := range leakyKeys {
+			if strings.HasPrefix(kv, prefix) {
+				t.Errorf("sanitizedGitEnv leaked %q", kv)
+			}
+		}
+	}
+	preserved := false
+	for _, kv := range got {
+		if kv == "GIT_AUTHOR_NAME=preserved" {
+			preserved = true
+			break
+		}
+	}
+	if !preserved {
+		t.Errorf("sanitizedGitEnv stripped a non-leaky GIT_* var")
 	}
 }
