@@ -9,6 +9,17 @@ on:
       - 'mkdocs.yml'
       - 'CHANGELOG.md'
       - '.github/workflows/docs.yml'
+  # Run the strict build on PRs too, so broken links / nav are caught
+  # before merge instead of failing silently in the post-merge deploy.
+  pull_request:
+    branches:
+      - main
+      - 'release/**'
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'CHANGELOG.md'
+      - '.github/workflows/docs.yml'
   workflow_dispatch:
 
 permissions:
@@ -45,6 +56,8 @@ jobs:
           path: site
 
   deploy:
+    # Deploy only on push to main / manual dispatch — never for PR builds.
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     environment:

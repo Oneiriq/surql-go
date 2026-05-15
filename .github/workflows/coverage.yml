@@ -1,11 +1,8 @@
 name: Coverage
 
+# Coverage is a code-quality check: PR-only, same rationale as ci.yml.
 on:
   pull_request:
-    branches:
-      - main
-      - 'release/**'
-  push:
     branches:
       - main
       - 'release/**'
