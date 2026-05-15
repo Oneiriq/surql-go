@@ -6,7 +6,7 @@ v0.2.0 is an **additive** release — no APIs were removed or renamed, so
 a straight `go get -u github.com/Oneiriq/surql-go` should be enough for
 existing code to keep compiling.
 
-That said, the wave adds a set of first-class helpers that can simplify
+That said, v0.2.0 adds a set of first-class helpers that can simplify
 your call sites significantly. This page highlights the patterns worth
 migrating to.
 

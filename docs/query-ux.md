@@ -1,6 +1,6 @@
 # Query UX Helpers
 
-The v0.2 "query UX" wave adds a handful of first-class helpers that
+The v0.2 "query UX" release adds a handful of first-class helpers that
 collapse previously verbose patterns into one-liners. This page walks
 each one with a before/after Go example.
 

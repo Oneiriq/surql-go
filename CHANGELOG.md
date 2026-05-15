@@ -60,3 +60,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 This is a pre-release port of [surql-py](https://github.com/Oneiriq/surql-py)
 targeting 1:1 feature parity. The runtime SurrealDB client, CRUD
 executor, and CLI land in the 0.1 -> 0.2 window.
+
+## [0.2.3] - 2026-05-15
+
+### Changed
+
+- Pinned `surrealdb.go` to the stable `v1.4.0` release instead of an
+  unstable pseudo-version snapshot.
+- Code-quality workflows (CI, coverage) now run only on pull requests;
+  the nightly cron was disabled (manual `workflow_dispatch` only).
+- The docs workflow runs `mkdocs build --strict` on pull requests, so
+  broken links and nav errors are caught before merge instead of only in
+  the post-merge deploy.
+
+### Docs
+
+- Replaced informal "wave" phrasing with neutral wording.
+
+### Known issues
+
+- `TestIntegration_LiveQueryReceivesChange` is skipped: `surrealdb.go`
+  v1.4.0 has a shutdown race in `CloseLiveNotifications` (Kill closes the
+  notification channel while the SDK's readLoop still writes to it). It
+  will be re-enabled once the SDK patches `CloseLiveNotifications`.

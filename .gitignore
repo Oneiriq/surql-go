@@ -1,5 +1,6 @@
 bin/
 dist/
+site/
 coverage.out
 coverage.html
 *.test
