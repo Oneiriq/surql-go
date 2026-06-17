@@ -199,6 +199,34 @@ func TestHelper_SimilaritySearchQuery(t *testing.T) {
 	}
 }
 
+func TestHelper_FullTextSearchQuery(t *testing.T) {
+	q, err := FullTextSearchQuery(
+		"memory", "content", 1, "insider buying", nil, "score",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := q.ToSurql()
+	want := "SELECT *, search::score(1) AS score FROM memory WHERE content @1@ 'insider buying'"
+	if got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestHelper_FullTextSearchQuery_WithFields(t *testing.T) {
+	q, err := FullTextSearchQuery(
+		"memory", "content", 2, "form 4", []string{"id", "content"}, "rel",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := q.ToSurql()
+	want := "SELECT id, content, search::score(2) AS rel FROM memory WHERE content @2@ 'form 4'"
+	if got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
 func TestReturnFormat_Values(t *testing.T) {
 	if ReturnNone.String() != "NONE" {
 		t.Error("none")

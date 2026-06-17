@@ -12,6 +12,7 @@ A code-first database toolkit for [SurrealDB](https://surrealdb.com/). Define sc
 - **Type-Safe Query Builder** -- Immutable fluent API with operator-typed `Where`, `SelectExpr` / `SelectAliased` aggregations, function factories, and `encoding/json` struct tags
 - **v3 Interactive Transactions** -- Native `BEGIN` / `COMMIT` / `ROLLBACK` via `DatabaseClient.Begin`, plus raw record-id targets and `GROUP ALL`
 - **Vector Search** -- HNSW and MTREE index support with 8 distance metrics and EFC/M tuning
+- **Full-Text Search (BM25)** -- the lexical leg of hybrid retrieval: `DEFINE ANALYZER` in code (`Analyzer` / `StandardAnalyzer`), BM25-scored `FULLTEXT` indexes (`BM25Index`), and `Query.FullTextSearch` / `Query.SearchScore` to query and rank
 - **Graph Traversal** -- Native SurrealDB graph features with edge relationships and a fluent `GraphQuery` builder
 - **Schema Visualization** -- Mermaid, GraphViz, and ASCII diagrams with theming
 - **Full CLI** -- `surql migrate` / `schema` / `db` / `orchestrate` subcommands for the entire lifecycle

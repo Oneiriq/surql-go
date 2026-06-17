@@ -179,12 +179,63 @@ func TestTableStatements_WithSearchIndex(t *testing.T) {
 	stmts := tbl.ToSurqlStatements()
 	found := false
 	for _, s := range stmts {
-		if s == "DEFINE INDEX content_search ON TABLE post COLUMNS title, content SEARCH ANALYZER ascii;" {
+		if s == "DEFINE INDEX content_search ON TABLE post COLUMNS title, content FULLTEXT ANALYZER ascii;" {
 			found = true
 		}
 	}
 	if !found {
 		t.Errorf("expected search index statement: %v", stmts)
+	}
+}
+
+func TestSearchIndex_ToSurqlDefaultsToFulltextAscii(t *testing.T) {
+	idx := SearchIndex("content_search", []string{"title", "content"})
+	got := idx.ToSurql("post")
+	want := "DEFINE INDEX content_search ON TABLE post COLUMNS title, content FULLTEXT ANALYZER ascii;"
+	if got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestBM25Index_RendersAnalyzerAndBM25(t *testing.T) {
+	idx := BM25Index("content_bm25", []string{"content"}, "text_en")
+	got := idx.ToSurql("memory")
+	want := "DEFINE INDEX content_bm25 ON TABLE memory COLUMNS content FULLTEXT ANALYZER text_en BM25;"
+	if got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestSearchIndex_WithAnalyzerBM25Highlights(t *testing.T) {
+	idx := SearchIndex("s", []string{"content"}).
+		WithAnalyzer("text_en").
+		WithBM25().
+		WithHighlights()
+	got := idx.ToSurql("doc")
+	want := "DEFINE INDEX s ON TABLE doc COLUMNS content FULLTEXT ANALYZER text_en BM25 HIGHLIGHTS;"
+	if got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestBM25Index_IfNotExists(t *testing.T) {
+	idx := BM25Index("content_bm25", []string{"content"}, "text_en")
+	got := idx.ToSurqlIfNotExists("memory")
+	want := "DEFINE INDEX IF NOT EXISTS content_bm25 ON TABLE memory COLUMNS content FULLTEXT ANALYZER text_en BM25;"
+	if got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestWithAnalyzer_ReturnsModifiedCopy(t *testing.T) {
+	base := SearchIndex("s", []string{"content"})
+	scored := base.WithAnalyzer("text_en").WithBM25()
+	// The original is unchanged (value-receiver clone-on-mutate).
+	if base.Analyzer != "" || base.BM25 {
+		t.Errorf("base index mutated: analyzer=%q bm25=%v", base.Analyzer, base.BM25)
+	}
+	if scored.Analyzer != "text_en" || !scored.BM25 {
+		t.Errorf("derived index missing config: analyzer=%q bm25=%v", scored.Analyzer, scored.BM25)
 	}
 }
 

@@ -134,6 +134,16 @@ type IndexDefinition struct {
 	HnswDistance HnswDistanceType
 	EFC          int // zero means unset
 	M            int // zero means unset
+
+	// Full-text SEARCH-specific. Analyzer is the analyzer name; an empty
+	// string renders the historical default (`ascii`). BM25 emits the
+	// relevance-scoring clause (with the engine's default k1/b parameters),
+	// required for query.Query.SearchScore to return a value. Highlights
+	// stores positional HIGHLIGHTS data (enables search::highlight /
+	// search::offsets).
+	Analyzer   string
+	BM25       bool
+	Highlights bool
 }
 
 // EventDefinition captures a DEFINE EVENT trigger.
@@ -312,9 +322,42 @@ func UniqueIndex(name string, columns []string) IndexDefinition {
 	return NewIndex(name, columns, IndexTypeUnique)
 }
 
-// SearchIndex is sugar for NewIndex(name, columns, IndexTypeSearch).
+// SearchIndex is sugar for NewIndex(name, columns, IndexTypeSearch). With no
+// analyzer set it renders the historical `ascii` default; chain WithAnalyzer /
+// WithBM25 / WithHighlights for a scorable index, or use BM25Index.
 func SearchIndex(name string, columns []string) IndexDefinition {
 	return NewIndex(name, columns, IndexTypeSearch)
+}
+
+// BM25Index builds a BM25-scored full-text SEARCH index over columns, analyzed
+// by analyzer. This is the index to pair with query.Query.FullTextSearch and
+// query.Query.SearchScore for lexical recall — BM25 is what makes
+// search::score return a relevance value.
+func BM25Index(name string, columns []string, analyzer string) IndexDefinition {
+	return SearchIndex(name, columns).WithAnalyzer(analyzer).WithBM25()
+}
+
+// WithAnalyzer sets the full-text SEARCH analyzer (e.g. one defined via
+// Analyzer / StandardAnalyzer). Only affects SEARCH indexes; when unset the
+// index renders the historical `ascii` analyzer. Returns a modified copy.
+func (i IndexDefinition) WithAnalyzer(analyzer string) IndexDefinition {
+	i.Analyzer = analyzer
+	return i
+}
+
+// WithBM25 emits the BM25 relevance-scoring clause on a SEARCH index (with the
+// engine's default parameters). Required for query.Query.SearchScore. Returns
+// a modified copy.
+func (i IndexDefinition) WithBM25() IndexDefinition {
+	i.BM25 = true
+	return i
+}
+
+// WithHighlights stores positional HIGHLIGHTS data on a SEARCH index. Returns
+// a modified copy.
+func (i IndexDefinition) WithHighlights() IndexDefinition {
+	i.Highlights = true
+	return i
 }
 
 // MTreeIndexOptions configures an MTREE vector index.
@@ -499,7 +542,18 @@ func (i IndexDefinition) toSurql(tableName string, ifNotExists bool) string {
 	case IndexTypeUnique:
 		b.WriteString(" UNIQUE")
 	case IndexTypeSearch:
-		b.WriteString(" SEARCH ANALYZER ascii")
+		analyzer := i.Analyzer
+		if analyzer == "" {
+			analyzer = "ascii"
+		}
+		b.WriteString(" FULLTEXT ANALYZER ")
+		b.WriteString(analyzer)
+		if i.BM25 {
+			b.WriteString(" BM25")
+		}
+		if i.Highlights {
+			b.WriteString(" HIGHLIGHTS")
+		}
 	}
 
 	b.WriteString(";")

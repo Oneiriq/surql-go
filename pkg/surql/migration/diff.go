@@ -813,10 +813,12 @@ func fieldToSQL(tableName string, f schema.FieldDefinition) (string, error) {
 	return b.String(), nil
 }
 
-// indexToSQL renders a DEFINE INDEX statement. Standard / UNIQUE / SEARCH
-// indexes use the basic form; MTREE and HNSW flavours route through their
-// dedicated helpers. Returns ErrValidation for MTREE / HNSW indexes missing
-// a dimension.
+// indexToSQL renders a DEFINE INDEX statement. Standard / UNIQUE / full-text
+// (FULLTEXT) indexes delegate to the canonical IndexDefinition.ToSurql so the
+// diff and the schema generator stay byte-for-byte consistent (a full-text
+// index emits the SurrealDB 3.x FULLTEXT keyword plus its analyzer / BM25 /
+// HIGHLIGHTS clauses); MTREE and HNSW flavours route through their dedicated
+// helpers. Returns ErrValidation for MTREE / HNSW indexes missing a dimension.
 func indexToSQL(tableName string, idx schema.IndexDefinition) (string, error) {
 	switch idx.Type {
 	case schema.IndexTypeMTree:
@@ -825,20 +827,7 @@ func indexToSQL(tableName string, idx schema.IndexDefinition) (string, error) {
 		return hnswIndexToSQL(tableName, idx)
 	}
 
-	var b strings.Builder
-	b.WriteString("DEFINE INDEX ")
-	b.WriteString(idx.Name)
-	b.WriteString(" ON TABLE ")
-	b.WriteString(tableName)
-	b.WriteString(" COLUMNS ")
-	b.WriteString(strings.Join(idx.Columns, ", "))
-
-	if string(idx.Type) != string(schema.IndexTypeStandard) && idx.Type != "" {
-		b.WriteString(" ")
-		b.WriteString(string(idx.Type))
-	}
-	b.WriteString(";")
-	return b.String(), nil
+	return idx.ToSurql(tableName), nil
 }
 
 func mtreeIndexToSQL(tableName string, idx schema.IndexDefinition) (string, error) {

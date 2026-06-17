@@ -200,3 +200,24 @@ func SimilaritySearchQuery(
 	q = q.SimilarityScore(field, vector, distance, alias)
 	return q.VectorSearch(field, vector, k, distance, threshold)
 }
+
+// FullTextSearchQuery is the convenience builder for a full-text (BM25) search
+// — the lexical leg of hybrid retrieval. It wraps [Query.FullTextSearch] +
+// [Query.SearchScore] into `SELECT ..., search::score(reference) AS
+// <scoreAlias> FROM <table> WHERE <field> @reference@ <query>`. Pair with a
+// schema.BM25Index on field, then ORDER BY <scoreAlias> DESC to rank by
+// relevance.
+func FullTextSearchQuery(
+	table, field string,
+	reference int,
+	queryText string,
+	fields []string,
+	scoreAlias string,
+) (Query, error) {
+	q := Select(fields).SearchScore(reference, scoreAlias)
+	q, err := q.FromTable(table)
+	if err != nil {
+		return Query{}, err
+	}
+	return q.FullTextSearch(field, reference, queryText)
+}

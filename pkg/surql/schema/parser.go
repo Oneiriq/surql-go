@@ -191,6 +191,11 @@ func ParseIndex(indexName, definition string) (IndexDefinition, error) {
 		idx.HnswDistance = extractHnswDistance(definition)
 		idx.EFC = extractHnswEFC(definition)
 		idx.M = extractHnswM(definition)
+	case IndexTypeSearch:
+		idx.Analyzer = extractIndexAnalyzer(definition)
+		up := strings.ToUpper(definition)
+		idx.BM25 = strings.Contains(up, "BM25")
+		idx.Highlights = strings.Contains(up, "HIGHLIGHTS")
 	}
 
 	return idx, nil
@@ -496,13 +501,14 @@ func extractFlexible(def string) bool {
 // -----------------------------------------------------------------------------
 
 var (
-	reIndexColumns = regexp.MustCompile(`(?i)COLUMNS\s+([^;]+?)(?:\s+UNIQUE\b|\s+SEARCH\b|\s+HNSW\b|\s+MTREE\b|\s*;|\s*$)`)
-	reIndexFields  = regexp.MustCompile(`(?i)FIELDS\s+([^;]+?)(?:\s+UNIQUE\b|\s+SEARCH\b|\s+HNSW\b|\s+MTREE\b|\s*;|\s*$)`)
+	reIndexColumns = regexp.MustCompile(`(?i)COLUMNS\s+([^;]+?)(?:\s+UNIQUE\b|\s+FULLTEXT\b|\s+SEARCH\b|\s+HNSW\b|\s+MTREE\b|\s*;|\s*$)`)
+	reIndexFields  = regexp.MustCompile(`(?i)FIELDS\s+([^;]+?)(?:\s+UNIQUE\b|\s+FULLTEXT\b|\s+SEARCH\b|\s+HNSW\b|\s+MTREE\b|\s*;|\s*$)`)
 	reIndexDim     = regexp.MustCompile(`(?i)DIMENSION\s+(\d+)`)
 	reIndexDist    = regexp.MustCompile(`(?i)(?:DIST|DISTANCE)\s+([A-Za-z_]\w*)`)
 	reVectorType   = regexp.MustCompile(`(?i)TYPE\s+([A-Za-z_]\w*)`)
 	reIndexEFC     = regexp.MustCompile(`(?i)\bEFC\s+(\d+)`)
 	reIndexM       = regexp.MustCompile(`(?i)\bM\s+(\d+)`)
+	reIndexAnlzr   = regexp.MustCompile(`(?i)ANALYZER\s+(\w+)`)
 )
 
 func splitColumns(raw string) []string {
@@ -540,11 +546,27 @@ func extractIndexType(def string) IndexType {
 		return IndexTypeHNSW
 	case strings.Contains(up, "MTREE"):
 		return IndexTypeMTree
-	case strings.Contains(up, "SEARCH"):
+	case strings.Contains(up, "FULLTEXT"), strings.Contains(up, "SEARCH"):
+		// SurrealDB 3.x renamed the full-text keyword SEARCH -> FULLTEXT;
+		// recognise both spellings so v1/v2 and v3 INFO output round-trip.
 		return IndexTypeSearch
 	default:
 		return IndexTypeStandard
 	}
+}
+
+// extractIndexAnalyzer pulls the `ANALYZER <name>` analyzer name out of a
+// full-text DEFINE INDEX statement. The historical `ascii` default (what a
+// plain SearchIndex renders) normalises back to "" so a round-trip of the
+// default form is an identity, leaving an explicit non-`ascii` analyzer set.
+func extractIndexAnalyzer(def string) string {
+	if m := reIndexAnlzr.FindStringSubmatch(def); len(m) == 2 {
+		if strings.EqualFold(m[1], "ascii") {
+			return ""
+		}
+		return m[1]
+	}
+	return ""
 }
 
 func extractMtreeDimension(def string) int {
