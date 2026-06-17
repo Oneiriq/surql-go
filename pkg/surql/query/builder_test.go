@@ -512,3 +512,127 @@ func TestExplain_Hint(t *testing.T) {
 		t.Errorf("explain full missing: %q", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Full-text search
+// ---------------------------------------------------------------------------
+
+func TestFullTextSearch_RendersMatchOperator(t *testing.T) {
+	q, err := Query{}.Select(nil).FromTable("memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	q, err = q.FullTextSearch("content", 1, "insider buying")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := q.ToSurql()
+	if want := "SELECT * FROM memory WHERE content @1@ 'insider buying'"; got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestFullTextSearch_WithScoreAndOrder(t *testing.T) {
+	q, err := Query{}.Select(nil).SearchScore(1, "score").FromTable("memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	q, err = q.FullTextSearch("content", 1, "form 4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	q, err = q.OrderBy("score", "DESC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	q, err = q.Limit(5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := q.ToSurql()
+	want := "SELECT *, search::score(1) AS score FROM memory " +
+		"WHERE content @1@ 'form 4' ORDER BY score DESC LIMIT 5"
+	if got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestFullTextSearch_EscapesSingleQuotes(t *testing.T) {
+	q, err := Query{}.Select(nil).FromTable("memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	q, err = q.FullTextSearch("content", 0, "o'brien")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := q.ToSurql()
+	if want := `SELECT * FROM memory WHERE content @0@ 'o\'brien'`; got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestFullTextSearch_EmptyFieldRejected(t *testing.T) {
+	q, err := Query{}.Select(nil).FromTable("memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.FullTextSearch("", 1, "x"); err == nil {
+		t.Fatal("expected error for empty field")
+	} else if !errors.Is(err, surqlerrors.ErrValidation) {
+		t.Fatalf("expected ErrValidation, got %v", err)
+	}
+}
+
+func TestFullTextSearch_EmptyQueryRejected(t *testing.T) {
+	q, err := Query{}.Select(nil).FromTable("memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.FullTextSearch("content", 1, ""); err == nil {
+		t.Fatal("expected error for empty query")
+	} else if !errors.Is(err, surqlerrors.ErrValidation) {
+		t.Fatalf("expected ErrValidation, got %v", err)
+	}
+}
+
+func TestFullTextSearch_AndVectorBothRenderInWhere(t *testing.T) {
+	q, err := Query{}.Select(nil).FromTable("memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	q, err = q.VectorSearch("embedding", []float64{0.1, 0.2}, 5, DistanceCosine, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q, err = q.FullTextSearch("content", 1, "term")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := q.ToSurql()
+	if !strings.Contains(got, "embedding <|5,COSINE|> [0.1, 0.2]") {
+		t.Errorf("vector predicate missing in %q", got)
+	}
+	if !strings.Contains(got, "content @1@ 'term'") {
+		t.Errorf("fulltext predicate missing in %q", got)
+	}
+	if !strings.Contains(got, " AND ") {
+		t.Errorf("expected AND join in %q", got)
+	}
+}
+
+func TestSearchScore_ImmutabilityPreserved(t *testing.T) {
+	base, err := Query{}.Select(nil).FromTable("memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scored := base.SearchScore(2, "rel")
+	baseSQL, _ := base.ToSurql()
+	if baseSQL != "SELECT * FROM memory" {
+		t.Errorf("base query mutated: %q", baseSQL)
+	}
+	scoredSQL, _ := scored.ToSurql()
+	if want := "SELECT *, search::score(2) AS rel FROM memory"; scoredSQL != want {
+		t.Errorf("got %q want %q", scoredSQL, want)
+	}
+}

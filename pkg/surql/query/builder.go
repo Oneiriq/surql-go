@@ -99,6 +99,17 @@ type Query struct {
 	VectorDistance  VectorDistanceType
 	VectorThreshold *float64
 
+	// Full-text search parameters (the `@@` / `@n@` matches operator).
+	// FulltextField is the matched column; FulltextReference is the match
+	// reference number tying the predicate to `search::score(n)` (the `@n@`
+	// form); FulltextQuery is the query text, inlined as a quoted, escaped
+	// literal. FulltextSet marks the predicate as configured so a zero
+	// reference is distinguishable from "unset".
+	FulltextField     string
+	FulltextReference int
+	FulltextQuery     string
+	FulltextSet       bool
+
 	// Hints accumulates optimization comments rendered by [RenderHints].
 	Hints []QueryHint
 }
@@ -469,6 +480,45 @@ func (q Query) SimilarityScore(field string, vector []float64, metric VectorDist
 	return out
 }
 
+// ---------------------------------------------------------------------------
+// Full-text search
+// ---------------------------------------------------------------------------
+
+// FullTextSearch configures a full-text SEARCH predicate rendered as
+// `<field> @<reference>@ <query>` in the WHERE clause.
+//
+// The reference integer ties the match to a [Query.SearchScore] (or
+// search::highlight) call, so a row's BM25 relevance can be projected and
+// ordered on. It requires a BM25 SEARCH index on field (see
+// schema.BM25Index). The query text is inlined as a quoted, escaped literal.
+// An empty field or query yields an ErrValidation error.
+func (q Query) FullTextSearch(field string, reference int, queryText string) (Query, error) {
+	if field == "" {
+		return Query{}, surqlerrors.New(surqlerrors.ErrValidation,
+			"Full-text search field cannot be empty")
+	}
+	if queryText == "" {
+		return Query{}, surqlerrors.New(surqlerrors.ErrValidation,
+			"Full-text search query cannot be empty")
+	}
+	out := q.clone()
+	out.FulltextField = field
+	out.FulltextReference = reference
+	out.FulltextQuery = queryText
+	out.FulltextSet = true
+	return out, nil
+}
+
+// SearchScore appends `search::score(<reference>) AS <alias>` to the projected
+// fields — the BM25 relevance for the match registered at reference by
+// [Query.FullTextSearch]. Order by alias to rank.
+func (q Query) SearchScore(reference int, alias string) Query {
+	expr := fmt.Sprintf("search::score(%d) AS %s", reference, alias)
+	out := q.clone()
+	out.Fields = append(out.Fields, expr)
+	return out
+}
+
 // WithReturnFormat sets the RETURN clause to a specific format.
 func (q Query) WithReturnFormat(f ReturnFormat) Query {
 	out := q.clone()
@@ -648,6 +698,10 @@ func (q Query) buildSelect() (string, error) {
 			op = fmt.Sprintf("<|%d,%s|>", *q.VectorK, string(q.VectorDistance))
 		}
 		whereParts = append(whereParts, fmt.Sprintf("%s %s %s", q.VectorField, op, vec))
+	}
+	if q.FulltextSet && q.FulltextField != "" && q.FulltextQuery != "" {
+		quoted := quoteValueExpr(q.FulltextQuery)
+		whereParts = append(whereParts, fmt.Sprintf("%s @%d@ %s", q.FulltextField, q.FulltextReference, quoted))
 	}
 	for _, c := range q.Conditions {
 		whereParts = append(whereParts, "("+c+")")

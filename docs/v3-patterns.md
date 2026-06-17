@@ -94,6 +94,95 @@ emits `type::thing('<table>', <id>)` for cases where the id value is
 already a typed value (int, UUID, etc). Both implement `types.Operator`
 and render verbatim wherever surql-go accepts an expression.
 
+## Full-text search (BM25)
+
+Full-text (BM25) search is the **sparse / lexical leg of hybrid retrieval** —
+pair it with `Query.VectorSearch` (the dense leg) and fuse the two result
+orders by rank (Reciprocal Rank Fusion).
+
+### `SEARCH` was renamed `FULLTEXT`
+
+SurrealDB 3.0 renamed the full-text index keyword. The v1/v2 form is a parse
+error on v3 (`Unexpected token, expected Eof` at `SEARCH`):
+
+```text
+DEFINE INDEX idx ON TABLE t COLUMNS content SEARCH ANALYZER ascii BM25;  -- parse error on v3
+```
+
+v3 spells it `FULLTEXT`:
+
+```text
+DEFINE INDEX idx ON TABLE t COLUMNS content FULLTEXT ANALYZER ascii BM25 HIGHLIGHTS;
+```
+
+surql-go emits the `FULLTEXT` keyword from `IndexTypeSearch` / `SearchIndex` /
+`BM25Index` (and the migration diff renders it the same way); the `INFO FOR
+TABLE` index parser recognises **both** spellings so historical schemas still
+round-trip. `COLUMNS` and `FIELDS` are interchangeable in this statement.
+
+Bare `BM25` uses the engine defaults (`k1 = 1.2`, `b = 0.75`); the analyzer
+defaults to `ascii` when the clause is omitted — define and name one explicitly
+for real lexical recall.
+
+### Defining the analyzer + index
+
+The analyzer is defined separately with `DEFINE ANALYZER` and **must be applied
+before** the index that references it:
+
+```go
+import "github.com/Oneiriq/surql-go/pkg/surql/schema"
+
+analyzer := schema.StandardAnalyzer("text_en") // class + lowercase + ascii
+idx := schema.BM25Index("content_bm25", []string{"content"}, "text_en")
+
+// Analyzer DDL is emitted first, then the table (with its FULLTEXT index):
+script, _ := schema.GenerateSchemaSQLFromSlicesWithAnalyzers(
+    []schema.AnalyzerDefinition{analyzer},
+    []schema.TableDefinition{
+        schema.NewTable("memory", schema.WithIndexes(idx)),
+    },
+    nil,   // edges
+    false, // ifNotExists
+)
+// DEFINE ANALYZER text_en TOKENIZERS class FILTERS lowercase,ascii;
+// DEFINE TABLE memory SCHEMAFULL;
+// DEFINE INDEX content_bm25 ON TABLE memory COLUMNS content FULLTEXT ANALYZER text_en BM25;
+```
+
+### Querying
+
+`Query.FullTextSearch(field, reference, query)` renders the `@reference@`
+matches operator in the `WHERE` clause; `Query.SearchScore(reference, alias)`
+projects `search::score(reference)`. The `FullTextSearchQuery` helper wires both
+together:
+
+```go
+import "github.com/Oneiriq/surql-go/pkg/surql/query"
+
+q, _ := query.FullTextSearchQuery(
+    "memory", "content", 1, "insider buying", nil, "score",
+)
+// SELECT *, search::score(1) AS score FROM memory WHERE content @1@ 'insider buying'
+```
+
+### `search::score` and scan ordering
+
+The v3 streaming executor's full-text scan yields matching rows **already in
+BM25 relevance order**, but does not (in 3.0.x) plumb the per-row score through
+to `search::score(<ref>)`, which returns `0` there. So **rank by the scan's
+natural order rather than `ORDER BY search::score(...)`**. This is sufficient
+for Reciprocal Rank Fusion, which fuses *ranks*, not raw scores:
+
+```go
+// The sparse leg: rows come back in relevance order; cap the candidate set.
+q, _ := query.FullTextSearchQuery("memory", "content", 1, "insider buying", nil, "score")
+q, _ = q.Limit(100)
+// Fuse the returned order with the dense (VectorSearch) order via RRF.
+```
+
+v3 also ships a native `search::rrf([$dense, $sparse], k, 60)` function that
+fuses two result lists server-side, if you prefer in-engine fusion.
+
 ## Missing-table error shape
 
 v2 treated queries against an undefined table as returning zero rows. v3

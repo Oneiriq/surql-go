@@ -39,6 +39,31 @@ func GenerateAccessSQL(access AccessDefinition) []string {
 	return []string{access.ToSurql()}
 }
 
+// GenerateAnalyzerSQL emits the DEFINE ANALYZER statement(s) for an analyzer
+// definition. It validates first, returning an ErrValidation error for an
+// invalid definition (e.g. an empty name), and otherwise returns a
+// single-element slice so the output type matches the other generators.
+//
+// A full-text index defined with BM25Index / SearchIndex references its
+// analyzer by name; the DEFINE ANALYZER statement must be applied BEFORE the
+// DEFINE INDEX that references it.
+func GenerateAnalyzerSQL(analyzer AnalyzerDefinition) ([]string, error) {
+	if err := analyzer.Validate(); err != nil {
+		return nil, err
+	}
+	return []string{analyzer.ToSurql()}, nil
+}
+
+// GenerateAnalyzerSQLIfNotExists is like GenerateAnalyzerSQL but emits the
+// DEFINE ANALYZER statement with IF NOT EXISTS for idempotent re-application
+// (e.g. a persistent store applying its schema on every connect).
+func GenerateAnalyzerSQLIfNotExists(analyzer AnalyzerDefinition) ([]string, error) {
+	if err := analyzer.Validate(); err != nil {
+		return nil, err
+	}
+	return []string{analyzer.ToSurqlIfNotExists()}, nil
+}
+
 // GenerateSchemaSQL composes a full SurrealQL schema script from every table
 // and edge registered in r. Tables are emitted first (in sorted order),
 // followed by edges (also sorted). Each definition group is separated by a
@@ -58,7 +83,7 @@ func GenerateSchemaSQL(r *SchemaRegistry, ifNotExists bool) (string, error) {
 	tables := r.Tables()
 	edges := r.Edges()
 
-	return generateSchemaScript(tables, edges, ifNotExists)
+	return generateSchemaScript(nil, tables, edges, ifNotExists)
 }
 
 // GenerateSchemaSQLFromSlices composes a full SurrealQL schema script from the
@@ -66,15 +91,43 @@ func GenerateSchemaSQL(r *SchemaRegistry, ifNotExists bool) (string, error) {
 // emitted in the order provided (callers sort first if determinism is
 // required).
 func GenerateSchemaSQLFromSlices(tables []TableDefinition, edges []EdgeDefinition, ifNotExists bool) (string, error) {
-	return generateSchemaScript(tables, edges, ifNotExists)
+	return generateSchemaScript(nil, tables, edges, ifNotExists)
 }
 
-func generateSchemaScript(tables []TableDefinition, edges []EdgeDefinition, ifNotExists bool) (string, error) {
-	if len(tables) == 0 && len(edges) == 0 {
+// GenerateSchemaSQLFromSlicesWithAnalyzers is GenerateSchemaSQLFromSlices with
+// a leading slice of DEFINE ANALYZER definitions. Analyzer DDL is emitted
+// FIRST — before any table — because a full-text index references its analyzer
+// by name and the DEFINE ANALYZER must already exist when the DEFINE INDEX is
+// applied. An invalid analyzer (e.g. an empty name) yields an ErrValidation
+// error. Inputs are emitted in the order provided.
+func GenerateSchemaSQLFromSlicesWithAnalyzers(analyzers []AnalyzerDefinition, tables []TableDefinition, edges []EdgeDefinition, ifNotExists bool) (string, error) {
+	return generateSchemaScript(analyzers, tables, edges, ifNotExists)
+}
+
+func generateSchemaScript(analyzers []AnalyzerDefinition, tables []TableDefinition, edges []EdgeDefinition, ifNotExists bool) (string, error) {
+	if len(analyzers) == 0 && len(tables) == 0 && len(edges) == 0 {
 		return "", nil
 	}
 
-	stmts := make([]string, 0, len(tables)*3+len(edges)*3)
+	stmts := make([]string, 0, len(analyzers)+len(tables)*3+len(edges)*3)
+
+	for _, a := range analyzers {
+		var (
+			analyzerStmts []string
+			err           error
+		)
+		if ifNotExists {
+			analyzerStmts, err = GenerateAnalyzerSQLIfNotExists(a)
+		} else {
+			analyzerStmts, err = GenerateAnalyzerSQL(a)
+		}
+		if err != nil {
+			return "", surqlerrors.Wrapf(surqlerrors.ErrValidation, err,
+				"failed to generate SQL for analyzer %q", a.Name)
+		}
+		stmts = append(stmts, analyzerStmts...)
+		stmts = append(stmts, "")
+	}
 
 	for _, t := range tables {
 		stmts = append(stmts, GenerateTableSQL(t, ifNotExists)...)

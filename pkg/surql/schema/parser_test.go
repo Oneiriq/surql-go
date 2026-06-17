@@ -486,6 +486,114 @@ func TestParseIndex_RoundTripHnsw(t *testing.T) {
 	}
 }
 
+func TestParseIndex_FulltextKeyword(t *testing.T) {
+	idx, err := ParseIndex("s",
+		"DEFINE INDEX s ON TABLE doc COLUMNS content FULLTEXT ANALYZER text_en BM25 HIGHLIGHTS;")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idx.Type != IndexTypeSearch {
+		t.Errorf("Type = %q, want SEARCH", idx.Type)
+	}
+	if !reflect.DeepEqual(idx.Columns, []string{"content"}) {
+		t.Errorf("Columns = %v", idx.Columns)
+	}
+	if idx.Analyzer != "text_en" {
+		t.Errorf("Analyzer = %q, want text_en", idx.Analyzer)
+	}
+	if !idx.BM25 {
+		t.Error("expected BM25 = true")
+	}
+	if !idx.Highlights {
+		t.Error("expected Highlights = true")
+	}
+}
+
+func TestParseIndex_LegacySearchKeyword(t *testing.T) {
+	// The v1/v2 SEARCH spelling is still recognised so historical INFO output
+	// round-trips into the same IndexTypeSearch.
+	idx, err := ParseIndex("s",
+		"DEFINE INDEX s ON TABLE doc COLUMNS content SEARCH ANALYZER text_en BM25;")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idx.Type != IndexTypeSearch {
+		t.Errorf("Type = %q, want SEARCH", idx.Type)
+	}
+	if idx.Analyzer != "text_en" {
+		t.Errorf("Analyzer = %q, want text_en", idx.Analyzer)
+	}
+	if !idx.BM25 {
+		t.Error("expected BM25 = true")
+	}
+	if idx.Highlights {
+		t.Error("expected Highlights = false")
+	}
+}
+
+func TestParseIndex_FulltextAsciiNormalizesToUnset(t *testing.T) {
+	// The historical `ascii` default normalises back to "" so the default
+	// SearchIndex form round-trips as an identity.
+	idx, err := ParseIndex("content_search",
+		"DEFINE INDEX content_search ON TABLE post COLUMNS title, content FULLTEXT ANALYZER ascii;")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idx.Type != IndexTypeSearch {
+		t.Errorf("Type = %q, want SEARCH", idx.Type)
+	}
+	if idx.Analyzer != "" {
+		t.Errorf("Analyzer = %q, want \"\" (ascii normalises to unset)", idx.Analyzer)
+	}
+	if idx.BM25 || idx.Highlights {
+		t.Errorf("expected no BM25/HIGHLIGHTS, got bm25=%v highlights=%v", idx.BM25, idx.Highlights)
+	}
+}
+
+func TestParseIndex_RoundTripSearchDefault(t *testing.T) {
+	orig := SearchIndex("content_search", []string{"title", "content"})
+	parsed, err := ParseIndex(orig.Name, orig.ToSurql("post"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Type != orig.Type {
+		t.Errorf("Type: got %q, want %q", parsed.Type, orig.Type)
+	}
+	if !reflect.DeepEqual(parsed.Columns, orig.Columns) {
+		t.Errorf("Columns: got %v, want %v", parsed.Columns, orig.Columns)
+	}
+	if parsed.Analyzer != orig.Analyzer {
+		t.Errorf("Analyzer: got %q, want %q", parsed.Analyzer, orig.Analyzer)
+	}
+	if parsed.BM25 != orig.BM25 || parsed.Highlights != orig.Highlights {
+		t.Errorf("flags differ: parsed bm25=%v hl=%v, orig bm25=%v hl=%v",
+			parsed.BM25, parsed.Highlights, orig.BM25, orig.Highlights)
+	}
+}
+
+func TestParseIndex_RoundTripBM25(t *testing.T) {
+	orig := BM25Index("content_bm25", []string{"content"}, "text_en").WithHighlights()
+	parsed, err := ParseIndex(orig.Name, orig.ToSurql("memory"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Type != IndexTypeSearch {
+		t.Errorf("Type = %q, want SEARCH", parsed.Type)
+	}
+	if !reflect.DeepEqual(parsed.Columns, orig.Columns) {
+		t.Errorf("Columns: got %v, want %v", parsed.Columns, orig.Columns)
+	}
+	if parsed.Analyzer != "text_en" {
+		t.Errorf("Analyzer = %q, want text_en", parsed.Analyzer)
+	}
+	if !parsed.BM25 {
+		t.Error("expected BM25 = true")
+	}
+	if !parsed.Highlights {
+		t.Error("expected Highlights = true")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // ParseEvent
 // ---------------------------------------------------------------------------

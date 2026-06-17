@@ -96,6 +96,33 @@ func TestGenerateTableSQL_WithStandardIndex(t *testing.T) {
 	}
 }
 
+func TestGenerateTableSQL_WithSearchIndex(t *testing.T) {
+	tbl := NewTable("post",
+		WithIndexes(SearchIndex("content_search", []string{"content"})),
+	)
+	stmts := GenerateTableSQL(tbl, false)
+	found := false
+	for _, s := range stmts {
+		if strings.Contains(s, "FULLTEXT ANALYZER ascii") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected FULLTEXT ANALYZER clause in stmts = %v", stmts)
+	}
+}
+
+func TestGenerateTableSQL_WithBM25Index(t *testing.T) {
+	tbl := NewTable("memory",
+		WithIndexes(BM25Index("content_bm25", []string{"content"}, "text_en")),
+	)
+	stmts := GenerateTableSQL(tbl, false)
+	want := "DEFINE INDEX content_bm25 ON TABLE memory COLUMNS content FULLTEXT ANALYZER text_en BM25;"
+	if !hasExact(stmts, want) {
+		t.Errorf("expected %q in stmts = %v", want, stmts)
+	}
+}
+
 func TestGenerateTableSQL_WithEvent(t *testing.T) {
 	tbl := NewTable("user",
 		WithEvents(NewEvent("email_changed",
@@ -406,6 +433,77 @@ func TestGenerateSchemaSQLFromSlices_PreservesOrder(t *testing.T) {
 	}
 	if zIdx > aIdx {
 		t.Errorf("slice order not preserved: z at %d, a at %d", zIdx, aIdx)
+	}
+}
+
+// ---------- GenerateAnalyzerSQL ----------
+
+func TestGenerateAnalyzerSQL_Standard(t *testing.T) {
+	stmts, err := GenerateAnalyzerSQL(StandardAnalyzer("text_en"))
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if len(stmts) != 1 {
+		t.Fatalf("expected 1 statement, got %d: %v", len(stmts), stmts)
+	}
+	want := "DEFINE ANALYZER text_en TOKENIZERS class FILTERS lowercase,ascii;"
+	if stmts[0] != want {
+		t.Errorf("got %q want %q", stmts[0], want)
+	}
+}
+
+func TestGenerateAnalyzerSQL_IfNotExists(t *testing.T) {
+	stmts, err := GenerateAnalyzerSQLIfNotExists(Analyzer("plain"))
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if want := "DEFINE ANALYZER IF NOT EXISTS plain;"; stmts[0] != want {
+		t.Errorf("got %q want %q", stmts[0], want)
+	}
+}
+
+func TestGenerateAnalyzerSQL_Validates(t *testing.T) {
+	_, err := GenerateAnalyzerSQL(Analyzer(""))
+	if err == nil {
+		t.Fatal("expected validation error for empty analyzer name")
+	}
+	if !stdErrors.Is(err, surqlerrors.ErrValidation) {
+		t.Fatalf("expected ErrValidation, got %v", err)
+	}
+}
+
+func TestGenerateSchemaSQLFromSlicesWithAnalyzers_AnalyzerBeforeTables(t *testing.T) {
+	analyzers := []AnalyzerDefinition{StandardAnalyzer("text_en")}
+	tables := []TableDefinition{
+		NewTable("memory", WithIndexes(BM25Index("content_bm25", []string{"content"}, "text_en"))),
+	}
+	sql, err := GenerateSchemaSQLFromSlicesWithAnalyzers(analyzers, tables, nil, false)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	analyzerIdx := strings.Index(sql, "DEFINE ANALYZER text_en")
+	indexIdx := strings.Index(sql, "FULLTEXT ANALYZER text_en BM25")
+	if analyzerIdx == -1 {
+		t.Fatalf("missing DEFINE ANALYZER in sql = %q", sql)
+	}
+	if indexIdx == -1 {
+		t.Fatalf("missing FULLTEXT index in sql = %q", sql)
+	}
+	// The analyzer DDL must precede the index that references it.
+	if analyzerIdx > indexIdx {
+		t.Errorf("analyzer at %d should precede index at %d; sql = %q", analyzerIdx, indexIdx, sql)
+	}
+}
+
+func TestGenerateSchemaSQLFromSlicesWithAnalyzers_InvalidAnalyzerErrors(t *testing.T) {
+	_, err := GenerateSchemaSQLFromSlicesWithAnalyzers(
+		[]AnalyzerDefinition{Analyzer("")}, nil, nil, false,
+	)
+	if err == nil {
+		t.Fatal("expected error for invalid analyzer")
+	}
+	if !stdErrors.Is(err, surqlerrors.ErrValidation) {
+		t.Fatalf("expected ErrValidation, got %v", err)
 	}
 }
 
