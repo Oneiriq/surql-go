@@ -49,6 +49,7 @@ func CreateSnapshot(registry *schema.SchemaRegistry, description string) (Schema
 		Tables:      registry.Tables(),
 		Edges:       registry.Edges(),
 		Accesses:    []schema.AccessDefinition{},
+		Buckets:     registry.Buckets(),
 	}, nil
 }
 
@@ -177,9 +178,9 @@ func ListSnapshots(dir string) ([]SchemaSnapshot, error) {
 // state, so passing to/from in that order yields ADD diffs for entries
 // present in "to" but missing in "from", DROP diffs for the reverse.
 //
-// Accesses are not yet part of DiffSchemas; CompareSnapshots reports only
-// table and edge differences. Future work can extend the diff engine to
-// cover DEFINE ACCESS statements.
+// DiffSchemas covers tables, edges, and buckets; accesses are not yet part of
+// it, so CompareSnapshots reports table, edge, and bucket differences. Future
+// work can extend the diff engine to cover DEFINE ACCESS statements.
 func CompareSnapshots(from, to SchemaSnapshot) ([]SchemaDiff, error) {
 	return DiffSchemas(to, from)
 }

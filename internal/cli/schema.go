@@ -481,8 +481,19 @@ func liveSnapshot(ctx context.Context, client interface {
 			edges = append(edges, edge)
 		}
 	}
-	_ = dbInfo
-	return migration.SchemaSnapshot{Tables: tables, Edges: edges}, nil
+
+	// Buckets are top-level DB objects parsed straight from INFO FOR DB.
+	bucketNames := make([]string, 0, len(dbInfo.Buckets))
+	for name := range dbInfo.Buckets {
+		bucketNames = append(bucketNames, name)
+	}
+	bucketNames = sortStringsStable(bucketNames)
+	buckets := make([]schema.BucketDefinition, 0, len(bucketNames))
+	for _, name := range bucketNames {
+		buckets = append(buckets, dbInfo.Buckets[name])
+	}
+
+	return migration.SchemaSnapshot{Tables: tables, Edges: edges, Buckets: buckets}, nil
 }
 
 // unwrapQueryResult pops the first envelope from DatabaseClient.Query and

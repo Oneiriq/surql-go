@@ -27,6 +27,12 @@ const (
 	FieldTypeRecord   FieldType = "record"
 	FieldTypeGeometry FieldType = "geometry"
 	FieldTypeAny      FieldType = "any"
+	// FieldTypeFile is the SurrealDB v3 file-pointer type (a reference into a
+	// storage bucket, rendered as TYPE file). Values are FileRef instances.
+	FieldTypeFile FieldType = "file"
+	// FieldTypeBytes is the SurrealDB byte-string type (rendered as TYPE
+	// bytes). Values round-trip as a Go []byte through CBOR.
+	FieldTypeBytes FieldType = "bytes"
 )
 
 // IsValid reports whether the receiver is one of the defined FieldType constants.
@@ -35,7 +41,7 @@ func (f FieldType) IsValid() bool {
 	case FieldTypeString, FieldTypeInt, FieldTypeFloat, FieldTypeBool,
 		FieldTypeDatetime, FieldTypeDuration, FieldTypeDecimal, FieldTypeNumber,
 		FieldTypeObject, FieldTypeArray, FieldTypeRecord, FieldTypeGeometry,
-		FieldTypeAny:
+		FieldTypeAny, FieldTypeFile, FieldTypeBytes:
 		return true
 	}
 	return false
@@ -225,6 +231,19 @@ func BoolField(name string, opts ...FieldOption) FieldDefinition {
 // DatetimeField builds a datetime-typed FieldDefinition.
 func DatetimeField(name string, opts ...FieldOption) FieldDefinition {
 	return NewField(name, FieldTypeDatetime, opts...)
+}
+
+// FileField builds a file-typed FieldDefinition (TYPE file). The stored value
+// is a FileRef pointing into a storage bucket; see BucketDefinition and the
+// connection.Bucket runtime handle for reading and writing the bytes.
+func FileField(name string, opts ...FieldOption) FieldDefinition {
+	return NewField(name, FieldTypeFile, opts...)
+}
+
+// BytesField builds a bytes-typed FieldDefinition (TYPE bytes). The stored
+// value round-trips as a Go []byte through CBOR.
+func BytesField(name string, opts ...FieldOption) FieldDefinition {
+	return NewField(name, FieldTypeBytes, opts...)
 }
 
 // RecordField builds a record-typed FieldDefinition. When targetTable is

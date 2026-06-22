@@ -139,16 +139,5 @@ func (t *Transaction) ExecuteWithVars(ctx context.Context, surql string, vars ma
 	if err != nil {
 		return nil, mapQueryError(err)
 	}
-	if results == nil {
-		return []any{}, nil
-	}
-	out := make([]any, 0, len(*results))
-	for _, r := range *results {
-		out = append(out, map[string]any{
-			"status": r.Status,
-			"time":   r.Time,
-			"result": r.Result,
-		})
-	}
-	return out, nil
+	return queryResultsToEnvelopes(results), nil
 }

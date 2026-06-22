@@ -56,6 +56,7 @@ type SchemaSnapshot struct {
 	Tables      []schema.TableDefinition  `json:"tables,omitempty"`
 	Edges       []schema.EdgeDefinition   `json:"edges,omitempty"`
 	Accesses    []schema.AccessDefinition `json:"accesses,omitempty"`
+	Buckets     []schema.BucketDefinition `json:"buckets,omitempty"`
 }
 
 // validateEventExpression rejects event condition or action expressions that
@@ -322,6 +323,29 @@ func DiffEdges(oldEdge, newEdge *schema.EdgeDefinition) ([]SchemaDiff, error) {
 	return nil, nil
 }
 
+// DiffBuckets compares two BucketDefinition snapshots and returns the list of
+// SchemaDiff operations needed to evolve old -> new.
+//
+// Passing nil for old produces a single ADD_BUCKET diff (DEFINE BUCKET forward,
+// REMOVE BUCKET backward); nil for new yields a DROP_BUCKET diff. When both are
+// non-nil and differ, a single MODIFY_BUCKET diff is produced whose forward SQL
+// is an ALTER BUCKET applying the new attributes and whose backward SQL is an
+// ALTER BUCKET restoring the old ones. Identical buckets produce no diff.
+func DiffBuckets(oldBucket, newBucket *schema.BucketDefinition) ([]SchemaDiff, error) {
+	switch {
+	case oldBucket == nil && newBucket != nil:
+		return []SchemaDiff{generateAddBucketDiff(*newBucket)}, nil
+	case oldBucket != nil && newBucket == nil:
+		return []SchemaDiff{generateDropBucketDiff(*oldBucket)}, nil
+	case oldBucket != nil && newBucket != nil:
+		if bucketsEqual(*oldBucket, *newBucket) {
+			return nil, nil
+		}
+		return []SchemaDiff{generateModifyBucketDiff(*oldBucket, *newBucket)}, nil
+	}
+	return nil, nil
+}
+
 // DiffSchemas aggregates DiffTables and DiffEdges across two whole snapshots.
 // Tables and edges are matched by name; the "code" side is treated as the
 // desired state and the "db" side as the current state, so ADD diffs refer
@@ -432,13 +456,169 @@ func DiffSchemas(code, db SchemaSnapshot) ([]SchemaDiff, error) {
 		diffs = append(diffs, modified...)
 	}
 
+	bucketDiffs, err := diffBucketSets(code.Buckets, db.Buckets)
+	if err != nil {
+		return nil, err
+	}
+	diffs = append(diffs, bucketDiffs...)
+
+	return diffs, nil
+}
+
+// diffBucketSets diffs the bucket slices of two snapshots: ADD for buckets in
+// code but not db, DROP for the reverse, MODIFY for buckets present on both
+// sides that differ. Ordering mirrors the table/edge passes: added (code
+// order), dropped (db order), modified (sorted name order).
+func diffBucketSets(codeBuckets, dbBuckets []schema.BucketDefinition) ([]SchemaDiff, error) {
+	codeMap := make(map[string]schema.BucketDefinition, len(codeBuckets))
+	for _, b := range codeBuckets {
+		codeMap[b.Name] = b
+	}
+	dbMap := make(map[string]schema.BucketDefinition, len(dbBuckets))
+	for _, b := range dbBuckets {
+		dbMap[b.Name] = b
+	}
+
+	diffs := make([]SchemaDiff, 0)
+
+	for _, b := range codeBuckets {
+		if _, ok := dbMap[b.Name]; ok {
+			continue
+		}
+		added, err := DiffBuckets(nil, bucketPtr(b))
+		if err != nil {
+			return nil, err
+		}
+		diffs = append(diffs, added...)
+	}
+
+	for _, b := range dbBuckets {
+		if _, ok := codeMap[b.Name]; ok {
+			continue
+		}
+		dropped, err := DiffBuckets(bucketPtr(b), nil)
+		if err != nil {
+			return nil, err
+		}
+		diffs = append(diffs, dropped...)
+	}
+
+	intersect := make([]string, 0)
+	for name := range dbMap {
+		if _, ok := codeMap[name]; ok {
+			intersect = append(intersect, name)
+		}
+	}
+	sort.Strings(intersect)
+	for _, name := range intersect {
+		oldB := dbMap[name]
+		newB := codeMap[name]
+		modified, err := DiffBuckets(&oldB, &newB)
+		if err != nil {
+			return nil, err
+		}
+		diffs = append(diffs, modified...)
+	}
+
 	return diffs, nil
 }
 
 // --- internal helpers ---
 
-func tablePtr(t schema.TableDefinition) *schema.TableDefinition { return &t }
-func edgePtr(e schema.EdgeDefinition) *schema.EdgeDefinition    { return &e }
+func tablePtr(t schema.TableDefinition) *schema.TableDefinition    { return &t }
+func edgePtr(e schema.EdgeDefinition) *schema.EdgeDefinition       { return &e }
+func bucketPtr(b schema.BucketDefinition) *schema.BucketDefinition { return &b }
+
+// bucketsEqual reports structural equality of two bucket definitions across
+// every emitted attribute (name, backend, read-only flag, permissions, and
+// comment).
+func bucketsEqual(a, b schema.BucketDefinition) bool {
+	return a.Name == b.Name &&
+		a.Backend == b.Backend &&
+		a.ReadOnly == b.ReadOnly &&
+		a.Comment == b.Comment &&
+		permissionsEqual(a.Permissions, b.Permissions)
+}
+
+// generateAddBucketDiff renders an ADD_BUCKET diff (DEFINE BUCKET forward,
+// REMOVE BUCKET backward).
+func generateAddBucketDiff(b schema.BucketDefinition) SchemaDiff {
+	return SchemaDiff{
+		Operation:   DiffOperationAddBucket,
+		Bucket:      b.Name,
+		Description: fmt.Sprintf("Add bucket %s", b.Name),
+		ForwardSQL:  b.ToSurql(),
+		BackwardSQL: b.ToRemoveSurql(),
+		Details:     map[string]any{"backend": b.Backend},
+	}
+}
+
+// generateDropBucketDiff renders a DROP_BUCKET diff (REMOVE BUCKET forward,
+// DEFINE BUCKET backward so the drop is reversible).
+func generateDropBucketDiff(b schema.BucketDefinition) SchemaDiff {
+	return SchemaDiff{
+		Operation:   DiffOperationDropBucket,
+		Bucket:      b.Name,
+		Description: fmt.Sprintf("Drop bucket %s", b.Name),
+		ForwardSQL:  b.ToRemoveSurql(),
+		BackwardSQL: b.ToSurql(),
+		Details:     map[string]any{"backend": b.Backend},
+	}
+}
+
+// generateModifyBucketDiff renders a MODIFY_BUCKET diff. Forward SQL is an
+// ALTER BUCKET statement transforming old -> new; backward SQL restores the old
+// attributes. Only changed attributes are emitted in each direction.
+func generateModifyBucketDiff(oldB, newB schema.BucketDefinition) SchemaDiff {
+	return SchemaDiff{
+		Operation:   DiffOperationModifyBucket,
+		Bucket:      newB.Name,
+		Description: fmt.Sprintf("Modify bucket %s", newB.Name),
+		ForwardSQL:  schema.AlterBucketSurql(newB.Name, bucketAlterChange(oldB, newB), false),
+		BackwardSQL: schema.AlterBucketSurql(newB.Name, bucketAlterChange(newB, oldB), false),
+		Details: map[string]any{
+			"old_backend": oldB.Backend,
+			"new_backend": newB.Backend,
+		},
+	}
+}
+
+// bucketAlterChange computes the AlterBucketChange that turns from -> to,
+// emitting only the attributes that actually differ. A cleared backend or
+// comment (non-empty -> empty) maps to the DROP form.
+func bucketAlterChange(from, to schema.BucketDefinition) schema.AlterBucketChange {
+	var change schema.AlterBucketChange
+	if from.ReadOnly != to.ReadOnly {
+		ro := to.ReadOnly
+		change.ReadOnly = &ro
+	}
+	if from.Backend != to.Backend {
+		if to.Backend == "" {
+			change.DropBackend = true
+		} else {
+			backend := to.Backend
+			change.Backend = &backend
+		}
+	}
+	if !permissionsEqual(from.Permissions, to.Permissions) {
+		// A nil permissions map would be skipped by AlterBucketSurql, so an
+		// empty target is represented as an explicit empty (non-nil) map.
+		if to.Permissions == nil {
+			change.Permissions = map[string]string{}
+		} else {
+			change.Permissions = copyPermissions(to.Permissions)
+		}
+	}
+	if from.Comment != to.Comment {
+		if to.Comment == "" {
+			change.DropComment = true
+		} else {
+			comment := to.Comment
+			change.Comment = &comment
+		}
+	}
+	return change
+}
 
 func edgeToTableProxy(e schema.EdgeDefinition) schema.TableDefinition {
 	return schema.TableDefinition{

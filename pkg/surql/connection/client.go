@@ -265,8 +265,16 @@ func (c *DatabaseClient) QueryWithVars(ctx context.Context, surql string, vars m
 	if err != nil {
 		return nil, mapQueryError(err)
 	}
+	return queryResultsToEnvelopes(results), nil
+}
+
+// queryResultsToEnvelopes flattens the SDK's typed QueryResult slice into the
+// per-statement {status, time, result} envelope list that the high-level
+// query surfaces (DatabaseClient, Session, Transaction) all return. A nil
+// pointer yields a non-nil empty slice so callers always get []any.
+func queryResultsToEnvelopes(results *[]surrealdb.QueryResult[any]) []any {
 	if results == nil {
-		return []any{}, nil
+		return []any{}
 	}
 	out := make([]any, 0, len(*results))
 	for _, r := range *results {
@@ -276,7 +284,7 @@ func (c *DatabaseClient) QueryWithVars(ctx context.Context, surql string, vars m
 			"result": r.Result,
 		})
 	}
-	return out, nil
+	return out
 }
 
 // Select executes a SurrealDB SELECT operation on the target table or record.
