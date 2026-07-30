@@ -85,9 +85,15 @@ jobs:
           # prior run can still own the name; idempotent removal avoids a
           # "container name already in use" 409.
           docker rm -f surrealdb >/dev/null 2>&1 || true
+          # The runner is itself a container, so a host-published port
+          # (-p 8000:8000) is not reachable via localhost from job steps
+          # when the runner sits on a bridge network. Join SurrealDB to
+          # this job's network namespace instead ($(hostname) is the
+          # runner's container id); localhost:8000 then works no matter
+          # how the runner container is networked.
           docker run -d \
             --name surrealdb \
-            -p 8000:8000 \
+            --network "container:$(hostname)" \
             surrealdb/surrealdb:v3.0.5 \
             start --user root --pass root memory
           for i in $(seq 1 20); do
@@ -98,6 +104,9 @@ jobs:
             echo "Waiting for SurrealDB... attempt $i"
             sleep 2
           done
+          # Fail the step here if the server never came up, instead of
+          # letting every test fail with connection errors later.
+          curl -sf http://localhost:8000/health
 
       - name: Set up Go
         uses: actions/setup-go@v6
