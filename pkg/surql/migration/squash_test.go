@@ -328,7 +328,7 @@ func TestSquashMigrations_WritesConsolidatedFile(t *testing.T) {
 	if removeIndex == -1 || removeField == -1 || removeTable == -1 {
 		t.Fatalf("down section missing statements:\n%s", downBody)
 	}
-	if !(removeIndex < removeField && removeField < removeTable) {
+	if removeIndex >= removeField || removeField >= removeTable {
 		t.Errorf("down order wrong: idx=%d field=%d table=%d\n%s",
 			removeIndex, removeField, removeTable, downBody)
 	}

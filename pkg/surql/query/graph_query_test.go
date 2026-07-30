@@ -1,6 +1,7 @@
 package query
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -203,28 +204,28 @@ func TestGraphQuery_Clone_NilIsNil(t *testing.T) {
 }
 
 func TestGraphQuery_Count_NilClientRejected(t *testing.T) {
-	_, err := NewGraphQuery("user:alice").Out("follows", nil).Count(nil, nil)
+	_, err := NewGraphQuery("user:alice").Out("follows", nil).Count(context.TODO(), nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}
 }
 
 func TestGraphQuery_Count_RequiresPath(t *testing.T) {
-	_, err := NewGraphQuery("user:alice").Count(nil, nil)
+	_, err := NewGraphQuery("user:alice").Count(context.TODO(), nil)
 	if err == nil {
 		t.Fatal("expected error: Count without path must fail (client nil secondary)")
 	}
 }
 
 func TestGraphQuery_Execute_NilClientRejected(t *testing.T) {
-	_, err := NewGraphQuery("user:alice").Out("follows", nil).Execute(nil, nil)
+	_, err := NewGraphQuery("user:alice").Out("follows", nil).Execute(context.TODO(), nil)
 	if err == nil {
 		t.Fatal("expected error for nil client")
 	}
 }
 
 func TestGraphQuery_Exists_PropagatesCountError(t *testing.T) {
-	_, err := NewGraphQuery("user:alice").Out("follows", nil).Exists(nil, nil)
+	_, err := NewGraphQuery("user:alice").Out("follows", nil).Exists(context.TODO(), nil)
 	if err == nil {
 		t.Fatal("expected error propagated from Count")
 	}
