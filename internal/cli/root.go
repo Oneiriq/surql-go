@@ -163,6 +163,7 @@ func NewRootCommand(build BuildInfo) *cobra.Command {
 		newMigrateCommand(),
 		newSchemaCommand(),
 		newDBCommand(),
+		newBucketCommand(),
 		newOrchestrateCommand(),
 	)
 

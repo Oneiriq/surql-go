@@ -22,6 +22,20 @@
 // Transaction wraps the SDK's interactive transaction (Commit / Rollback /
 // Execute) and is obtained via DatabaseClient.Begin.
 //
+// Session (SurrealDB v3 "multiple sessions") is an additional authenticated
+// context multiplexed over a single WebSocket connection, obtained via
+// DatabaseClient.Attach. Each session carries its own auth state and selected
+// namespace/database and mirrors the client query / CRUD surface plus Use /
+// Signin / Authenticate / Invalidate / Detach. Sessions are WebSocket-only;
+// Attach returns ErrConnection over HTTP transports.
+//
+// Bucket (SurrealDB v3 object storage) is a handle for file operations against
+// a named storage bucket, obtained via DatabaseClient.Bucket or Session.Bucket.
+// Every operation binds the bucket name, key, destination, and payload as
+// parameters to the type::file($bucket,$key) constructor — caller values are
+// never interpolated into SurrealQL. Put accepts a string or []byte payload
+// (a []byte is sent as CBOR bytes).
+//
 // LiveQuery exposes SurrealDB live-query subscriptions through a Go channel;
 // HTTP/HTTPS transports are rejected with ErrValidation because the
 // underlying protocol is WebSocket-only.

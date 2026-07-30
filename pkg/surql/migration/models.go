@@ -65,6 +65,9 @@ const (
 	DiffOperationAddEvent          DiffOperation = "add_event"
 	DiffOperationDropEvent         DiffOperation = "drop_event"
 	DiffOperationModifyPermissions DiffOperation = "modify_permissions"
+	DiffOperationAddBucket         DiffOperation = "add_bucket"
+	DiffOperationDropBucket        DiffOperation = "drop_bucket"
+	DiffOperationModifyBucket      DiffOperation = "modify_bucket"
 )
 
 // IsValid reports whether the receiver is one of the defined DiffOperation
@@ -75,7 +78,8 @@ func (o DiffOperation) IsValid() bool {
 		DiffOperationAddField, DiffOperationDropField, DiffOperationModifyField,
 		DiffOperationAddIndex, DiffOperationDropIndex,
 		DiffOperationAddEvent, DiffOperationDropEvent,
-		DiffOperationModifyPermissions:
+		DiffOperationModifyPermissions,
+		DiffOperationAddBucket, DiffOperationDropBucket, DiffOperationModifyBucket:
 		return true
 	}
 	return false
@@ -157,6 +161,7 @@ type SchemaDiff struct {
 	Field       string         `json:"field,omitempty"`
 	Index       string         `json:"index,omitempty"`
 	Event       string         `json:"event,omitempty"`
+	Bucket      string         `json:"bucket,omitempty"`
 	Description string         `json:"description"`
 	ForwardSQL  string         `json:"forward_sql"`
 	BackwardSQL string         `json:"backward_sql"`

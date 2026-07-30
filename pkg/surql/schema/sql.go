@@ -39,6 +39,26 @@ func GenerateAccessSQL(access AccessDefinition) []string {
 	return []string{access.ToSurql()}
 }
 
+// GenerateBucketSQL emits the DEFINE BUCKET statement for a bucket definition.
+// It validates first, returning an ErrValidation error for an invalid
+// definition (empty name or backend), and otherwise returns a single-element
+// slice so the output type matches the other generators.
+func GenerateBucketSQL(bucket BucketDefinition) ([]string, error) {
+	if err := bucket.Validate(); err != nil {
+		return nil, err
+	}
+	return []string{bucket.ToSurql()}, nil
+}
+
+// GenerateBucketSQLIfNotExists is like GenerateBucketSQL but emits the DEFINE
+// BUCKET statement with IF NOT EXISTS for idempotent re-application.
+func GenerateBucketSQLIfNotExists(bucket BucketDefinition) ([]string, error) {
+	if err := bucket.Validate(); err != nil {
+		return nil, err
+	}
+	return []string{bucket.ToSurqlIfNotExists()}, nil
+}
+
 // GenerateAnalyzerSQL emits the DEFINE ANALYZER statement(s) for an analyzer
 // definition. It validates first, returning an ErrValidation error for an
 // invalid definition (e.g. an empty name), and otherwise returns a
@@ -82,8 +102,9 @@ func GenerateSchemaSQL(r *SchemaRegistry, ifNotExists bool) (string, error) {
 
 	tables := r.Tables()
 	edges := r.Edges()
+	buckets := r.Buckets()
 
-	return generateSchemaScript(nil, tables, edges, ifNotExists)
+	return generateSchemaScript(buckets, nil, tables, edges, ifNotExists)
 }
 
 // GenerateSchemaSQLFromSlices composes a full SurrealQL schema script from the
@@ -91,7 +112,7 @@ func GenerateSchemaSQL(r *SchemaRegistry, ifNotExists bool) (string, error) {
 // emitted in the order provided (callers sort first if determinism is
 // required).
 func GenerateSchemaSQLFromSlices(tables []TableDefinition, edges []EdgeDefinition, ifNotExists bool) (string, error) {
-	return generateSchemaScript(nil, tables, edges, ifNotExists)
+	return generateSchemaScript(nil, nil, tables, edges, ifNotExists)
 }
 
 // GenerateSchemaSQLFromSlicesWithAnalyzers is GenerateSchemaSQLFromSlices with
@@ -101,15 +122,42 @@ func GenerateSchemaSQLFromSlices(tables []TableDefinition, edges []EdgeDefinitio
 // applied. An invalid analyzer (e.g. an empty name) yields an ErrValidation
 // error. Inputs are emitted in the order provided.
 func GenerateSchemaSQLFromSlicesWithAnalyzers(analyzers []AnalyzerDefinition, tables []TableDefinition, edges []EdgeDefinition, ifNotExists bool) (string, error) {
-	return generateSchemaScript(analyzers, tables, edges, ifNotExists)
+	return generateSchemaScript(nil, analyzers, tables, edges, ifNotExists)
 }
 
-func generateSchemaScript(analyzers []AnalyzerDefinition, tables []TableDefinition, edges []EdgeDefinition, ifNotExists bool) (string, error) {
-	if len(analyzers) == 0 && len(tables) == 0 && len(edges) == 0 {
+// GenerateSchemaSQLFromSlicesWithBuckets is GenerateSchemaSQLFromSlices with a
+// leading slice of DEFINE BUCKET definitions. Bucket DDL is emitted FIRST —
+// before any table — because a file-typed field may reference a bucket by
+// name. An invalid bucket (empty name or backend) yields an ErrValidation
+// error. Inputs are emitted in the order provided.
+func GenerateSchemaSQLFromSlicesWithBuckets(buckets []BucketDefinition, tables []TableDefinition, edges []EdgeDefinition, ifNotExists bool) (string, error) {
+	return generateSchemaScript(buckets, nil, tables, edges, ifNotExists)
+}
+
+func generateSchemaScript(buckets []BucketDefinition, analyzers []AnalyzerDefinition, tables []TableDefinition, edges []EdgeDefinition, ifNotExists bool) (string, error) {
+	if len(buckets) == 0 && len(analyzers) == 0 && len(tables) == 0 && len(edges) == 0 {
 		return "", nil
 	}
 
-	stmts := make([]string, 0, len(analyzers)+len(tables)*3+len(edges)*3)
+	stmts := make([]string, 0, len(buckets)+len(analyzers)+len(tables)*3+len(edges)*3)
+
+	for _, bucket := range buckets {
+		var (
+			bucketStmts []string
+			err         error
+		)
+		if ifNotExists {
+			bucketStmts, err = GenerateBucketSQLIfNotExists(bucket)
+		} else {
+			bucketStmts, err = GenerateBucketSQL(bucket)
+		}
+		if err != nil {
+			return "", surqlerrors.Wrapf(surqlerrors.ErrValidation, err,
+				"failed to generate SQL for bucket %q", bucket.Name)
+		}
+		stmts = append(stmts, bucketStmts...)
+		stmts = append(stmts, "")
+	}
 
 	for _, a := range analyzers {
 		var (

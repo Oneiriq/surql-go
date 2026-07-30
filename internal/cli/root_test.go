@@ -90,6 +90,7 @@ func TestNewRootCommand_HasAllGroups(t *testing.T) {
 		"migrate":     false,
 		"schema":      false,
 		"db":          false,
+		"bucket":      false,
 		"orchestrate": false,
 	}
 	for _, c := range root.Commands() {

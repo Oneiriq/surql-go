@@ -15,6 +15,7 @@ type DatabaseInfo struct {
 	Tables   map[string]TableDefinition
 	Edges    map[string]EdgeDefinition
 	Accesses map[string]AccessDefinition
+	Buckets  map[string]BucketDefinition
 }
 
 // ParseDBInfo parses a SurrealDB INFO FOR DB response into a DatabaseInfo.
@@ -33,12 +34,14 @@ func ParseDBInfo(info map[string]any) (DatabaseInfo, error) {
 			Tables:   map[string]TableDefinition{},
 			Edges:    map[string]EdgeDefinition{},
 			Accesses: map[string]AccessDefinition{},
+			Buckets:  map[string]BucketDefinition{},
 		}, nil
 	}
 
 	tables := map[string]TableDefinition{}
 	edges := map[string]EdgeDefinition{}
 	accesses := map[string]AccessDefinition{}
+	buckets := map[string]BucketDefinition{}
 
 	tbDict := extractStringMap(info, "tables", "tb")
 	for name, def := range tbDict {
@@ -69,10 +72,23 @@ func ParseDBInfo(info map[string]any) (DatabaseInfo, error) {
 		accesses[name] = access
 	}
 
+	buDict := extractStringMap(info, "buckets", "bu")
+	for name, def := range buDict {
+		if name == "" {
+			continue
+		}
+		bucket, err := ParseBucket(name, def)
+		if err != nil {
+			continue
+		}
+		buckets[name] = bucket
+	}
+
 	return DatabaseInfo{
 		Tables:   tables,
 		Edges:    edges,
 		Accesses: accesses,
+		Buckets:  buckets,
 	}, nil
 }
 
@@ -272,6 +288,32 @@ func ParseAccess(accessName, definition string) (AccessDefinition, error) {
 	return ad, nil
 }
 
+// ParseBucket parses a single DEFINE BUCKET statement into a BucketDefinition.
+// Returns an error wrapping ErrSchemaParse when the definition is empty. The
+// BACKEND, READONLY, and COMMENT clauses are recovered; the PERMISSIONS clause
+// is recovered as a blanket FULL / NONE form when present (per-action WHERE
+// expressions are left to the live INFO FOR DB round-trip and are not
+// reconstructed into the action map).
+func ParseBucket(bucketName, definition string) (BucketDefinition, error) {
+	if bucketName == "" {
+		return BucketDefinition{}, surqlerrors.New(surqlerrors.ErrSchemaParse,
+			"bucket name cannot be empty")
+	}
+	if strings.TrimSpace(definition) == "" {
+		return BucketDefinition{}, surqlerrors.Newf(surqlerrors.ErrSchemaParse,
+			"bucket %q has empty definition", bucketName)
+	}
+
+	bd := BucketDefinition{
+		Name:        bucketName,
+		Backend:     extractBucketBackend(definition),
+		ReadOnly:    reBucketReadOnly.MatchString(definition),
+		Comment:     extractQuoted(definition, "COMMENT"),
+		Permissions: extractBucketPermissions(definition),
+	}
+	return bd, nil
+}
+
 // -----------------------------------------------------------------------------
 // Internal helpers
 // -----------------------------------------------------------------------------
@@ -454,6 +496,8 @@ var fieldTypeMap = map[string]FieldType{
 	"record":   FieldTypeRecord,
 	"geometry": FieldTypeGeometry,
 	"any":      FieldTypeAny,
+	"file":     FieldTypeFile,
+	"bytes":    FieldTypeBytes,
 }
 
 func extractFieldType(def string) FieldType {
@@ -779,4 +823,41 @@ func extractAccessDuration(def, clause string) string {
 		return strings.TrimSpace(m[1])
 	}
 	return ""
+}
+
+// -----------------------------------------------------------------------------
+// Bucket extraction helpers
+// -----------------------------------------------------------------------------
+
+var (
+	// reBucketBackend matches BACKEND "..." or BACKEND '...' (SurrealDB INFO
+	// renders the value single-quoted; the builder emits double quotes).
+	reBucketBackend  = regexp.MustCompile(`(?i)BACKEND\s+(?:"([^"]*)"|'([^']*)')`)
+	reBucketReadOnly = regexp.MustCompile(`(?i)\bREADONLY\b`)
+	reBucketPermFull = regexp.MustCompile(`(?i)PERMISSIONS\s+FULL\b`)
+	reBucketPermNone = regexp.MustCompile(`(?i)PERMISSIONS\s+NONE\b`)
+)
+
+func extractBucketBackend(def string) string {
+	if m := reBucketBackend.FindStringSubmatch(def); len(m) == 3 {
+		if m[1] != "" {
+			return m[1]
+		}
+		return m[2]
+	}
+	return ""
+}
+
+// extractBucketPermissions recovers the blanket PERMISSIONS FULL / NONE forms
+// into the {"*": "FULL"} / {"*": "NONE"} action map. Per-action WHERE
+// expressions are not reconstructed (nil is returned), keeping the parser at
+// the same depth as the rest of the DB-level INFO parsing.
+func extractBucketPermissions(def string) map[string]string {
+	switch {
+	case reBucketPermFull.MatchString(def):
+		return map[string]string{"*": "FULL"}
+	case reBucketPermNone.MatchString(def):
+		return map[string]string{"*": "NONE"}
+	}
+	return nil
 }
