@@ -11,9 +11,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/Oneiriq/surql-go/pkg/surql/migration"
 	"github.com/Oneiriq/surql-go/pkg/surql/schema"
-	"gopkg.in/yaml.v3"
 )
 
 // newSchemaCommand wires `surql schema`.
@@ -168,7 +169,7 @@ func newSchemaGenerateCommand() *cobra.Command {
 				rc.Printer.Plainf("%s", sql)
 				return nil
 			}
-			if err := os.WriteFile(output, []byte(sql), 0o644); err != nil {
+			if err := os.WriteFile(output, []byte(sql), 0o600); err != nil {
 				return fmt.Errorf("write %s: %w", output, err)
 			}
 			rc.Printer.Successf("wrote %d bytes to %s", len(sql), output)
@@ -268,7 +269,7 @@ func newSchemaExportCommand() *cobra.Command {
 				_, err := rc.Printer.Out().Write(encoded)
 				return err
 			}
-			if err := os.WriteFile(output, encoded, 0o644); err != nil {
+			if err := os.WriteFile(output, encoded, 0o600); err != nil {
 				return fmt.Errorf("write %s: %w", output, err)
 			}
 			rc.Printer.Successf("wrote %d bytes to %s", len(encoded), output)
@@ -663,7 +664,7 @@ func newSchemaVisualizeCommand() *cobra.Command {
 				rc.Printer.Plainf("%s", out)
 				return nil
 			}
-			if err := os.WriteFile(output, []byte(out), 0o644); err != nil {
+			if err := os.WriteFile(output, []byte(out), 0o600); err != nil {
 				return fmt.Errorf("write %s: %w", output, err)
 			}
 			rc.Printer.Successf("wrote %d bytes to %s", len(out), output)

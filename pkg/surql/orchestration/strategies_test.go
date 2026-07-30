@@ -49,21 +49,6 @@ func failingFactory(counter *atomic.Int32) ClientFactory {
 	}
 }
 
-// selectiveFactory returns a factory that fails for environments listed in
-// failFor; every other environment is returned via the default factory
-// (which would attempt to connect — so tests using selectiveFactory must
-// arrange to never hit the success path, e.g. by listing every env).
-func selectiveFactory(failFor map[string]struct{}) ClientFactory {
-	return func(ctx context.Context, cfg connection.ConnectionConfig) (*connection.DatabaseClient, func(), error) {
-		if _, ok := failFor[cfg.DBNS]; ok {
-			return nil, func() {}, errors.New("selective failure")
-		}
-		// Should not be invoked in tests; produce an error to keep
-		// runs hermetic.
-		return nil, func() {}, errors.New("unconfigured environment in test factory")
-	}
-}
-
 func TestSequentialStrategy_DryRunAllSucceed(t *testing.T) {
 	t.Parallel()
 

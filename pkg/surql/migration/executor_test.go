@@ -1,6 +1,7 @@
 package migration
 
 import (
+	"context"
 	stdErrors "errors"
 	"path/filepath"
 	"sort"
@@ -201,7 +202,7 @@ func TestMigrationStatusReport_Zero(t *testing.T) {
 func TestMigrateDown_ZeroStepsRejected(t *testing.T) {
 	// Client is nil, but nil-check fires first — so this test asserts the
 	// input-validation order and returns an error before any I/O.
-	_, err := MigrateDown(nil, nil, "", 0)
+	_, err := MigrateDown(context.TODO(), nil, "", 0)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -215,7 +216,7 @@ func TestMigrateDown_ZeroStepsRejected(t *testing.T) {
 func TestExecuteMigration_InvalidDirection(t *testing.T) {
 	// We use a zero DatabaseClient pointer, but the direction guard runs
 	// after the nil check. Exercise the nil-check path first.
-	_, err := ExecuteMigration(nil, nil, Migration{}, MigrationDirectionUp)
+	_, err := ExecuteMigration(context.TODO(), nil, Migration{}, MigrationDirectionUp)
 	if err == nil {
 		t.Fatal("expected error for nil client")
 	}
@@ -227,7 +228,7 @@ func TestExecuteMigration_InvalidDirection(t *testing.T) {
 // --- CreateMigrationPlan nil client ---
 
 func TestCreateMigrationPlan_NilClient(t *testing.T) {
-	_, err := CreateMigrationPlan(nil, nil, "")
+	_, err := CreateMigrationPlan(context.TODO(), nil, "")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -243,7 +244,7 @@ func TestExecuteMigrationPlan_EmptyReturnsEmptyStatuses(t *testing.T) {
 	// Note: ExecuteMigrationPlan still demands a non-nil client even for
 	// an empty plan; to keep the unit test hermetic we exercise the nil
 	// short-circuit path via the direction guard.
-	_, err := ExecuteMigrationPlan(nil, nil, MigrationPlan{Direction: MigrationDirectionUp})
+	_, err := ExecuteMigrationPlan(context.TODO(), nil, MigrationPlan{Direction: MigrationDirectionUp})
 	if err == nil {
 		t.Fatal("expected error for nil client")
 	}

@@ -1,6 +1,7 @@
 package query
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -221,7 +222,7 @@ func TestFormatItem_NilRejected(t *testing.T) {
 func TestUpsertMany_EmptyItemsReturnsNil(t *testing.T) {
 	// client may be nil when items list is empty — mirrors surql-py's
 	// short-circuit behaviour.
-	got, err := UpsertMany(nil, nil, "users", nil, nil)
+	got, err := UpsertMany(context.TODO(), nil, "users", nil, nil)
 	if err == nil {
 		// len(items) == 0 but client check runs first, so err must be
 		// non-nil. Keep the guard in case we relax ordering later.
@@ -232,14 +233,14 @@ func TestUpsertMany_EmptyItemsReturnsNil(t *testing.T) {
 }
 
 func TestUpsertMany_NilClientInvalid(t *testing.T) {
-	_, err := UpsertMany(nil, nil, "users", []map[string]any{{"id": 1}}, nil)
+	_, err := UpsertMany(context.TODO(), nil, "users", []map[string]any{{"id": 1}}, nil)
 	if err == nil {
 		t.Fatal("expected error for nil client")
 	}
 }
 
 func TestInsertMany_NilClientInvalid(t *testing.T) {
-	_, err := InsertMany(nil, nil, "users", []map[string]any{{"id": 1}})
+	_, err := InsertMany(context.TODO(), nil, "users", []map[string]any{{"id": 1}})
 	if err == nil {
 		t.Fatal("expected error for nil client")
 	}
@@ -249,7 +250,7 @@ func TestInsertMany_EmptyReturnsNil(t *testing.T) {
 	// Empty list short-circuits before the client check in
 	// UpsertMany/RelateMany. InsertMany likewise needs nil guard first
 	// because client==nil would panic.
-	got, err := InsertMany(nil, nil, "users", nil)
+	got, err := InsertMany(context.TODO(), nil, "users", nil)
 	if err == nil && got == nil {
 		return
 	}
@@ -258,14 +259,14 @@ func TestInsertMany_EmptyReturnsNil(t *testing.T) {
 }
 
 func TestRelateMany_NilClientInvalid(t *testing.T) {
-	_, err := RelateMany(nil, nil, "user", "knows", "user", []Relation{{From: "user:a", To: "user:b"}})
+	_, err := RelateMany(context.TODO(), nil, "user", "knows", "user", []Relation{{From: "user:a", To: "user:b"}})
 	if err == nil {
 		t.Fatal("expected error for nil client")
 	}
 }
 
 func TestRelateMany_EmptyShortCircuits(t *testing.T) {
-	_, err := RelateMany(nil, nil, "user", "knows", "user", nil)
+	_, err := RelateMany(context.TODO(), nil, "user", "knows", "user", nil)
 	// still errors on nil client — empty-check is after. That is a
 	// deliberate guard to avoid silently accepting a nil client.
 	if err == nil {
@@ -274,7 +275,7 @@ func TestRelateMany_EmptyShortCircuits(t *testing.T) {
 }
 
 func TestDeleteMany_NilClientInvalid(t *testing.T) {
-	_, err := DeleteMany(nil, nil, "users", []string{"a"})
+	_, err := DeleteMany(context.TODO(), nil, "users", []string{"a"})
 	if err == nil {
 		t.Fatal("expected error for nil client")
 	}

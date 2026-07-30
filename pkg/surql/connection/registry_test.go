@@ -236,7 +236,9 @@ func TestRegistry_ConcurrentRegistration(t *testing.T) {
 func TestGetRegistry_Singleton(t *testing.T) {
 	t.Parallel()
 
-	if GetRegistry() != GetRegistry() {
+	first := GetRegistry()
+	second := GetRegistry()
+	if first != second {
 		t.Fatal("GetRegistry should return the same singleton on every call")
 	}
 }
