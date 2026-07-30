@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Row-level filtering on the graph helpers (`conditions`).** `Traverse`,
+  `TraverseWithDepth`, `GetOutgoingEdges`, `GetIncomingEdges`,
+  `GetRelatedRecords`, and `ShortestPath` take a trailing `conditions []any`.
+  Each entry is rendered by `Query.Where`, so raw SurrealQL strings and
+  `types.Operator` values are both accepted and may be mixed in one slice;
+  entries combine with `AND`. Pass `nil` to filter nothing. Restores parity
+  with the sibling ports, which have accepted `conditions` on their graph
+  helpers since surql-py 1.6.0.
+
+  Previously these helpers emitted a bare `SELECT * FROM record->edge` with no
+  filtering hook at all, so a caller needing row-level isolation -- a mandatory
+  `WHERE tenant_id = ...` alongside engine-enforced `PERMISSIONS` -- could not
+  express it and had to abandon the helpers for a hand-rolled
+  equality-filtered edge table.
+
+### Fixed
+
+- **`GetIncomingEdges` and `CountRelated` (incoming direction) were broken on
+  SurrealDB v3.** Both emitted the Python port's `FROM <-edge<-record`
+  ordering, which v3 rejects outright: `SELECT * FROM <-follows<-person:bob`
+  fails to parse with ``Unexpected token `;` `` (verified against v3.0.5).
+  Both now put the record at the head of the `FROM` expression
+  (`FROM record<-edge`), matching the ordering the Rust port already used.
+  Any caller relying on incoming-edge traversal was receiving a parse error.
+
+### Changed
+
+- **Graph helpers compose through `Query` instead of `fmt.Sprintf`.** Every
+  `SELECT`-shaped helper now builds its statement with
+  `NewQuery().Select(nil).FromTable(...).Traverse(...)` rather than
+  interpolating identifiers into a format string. Statement construction moved
+  into `selectTraversalSurql` / `applyConditions`, which are unit-testable
+  without a live client.
+
+- **BREAKING -- graph helper signatures.** The six helpers above take a new
+  trailing `conditions []any` parameter. Go has no default arguments, so this
+  follows the package's existing convention for optional arguments (as
+  `TraverseWithDepth`'s `depth *int` already does). Existing call sites migrate
+  by passing `nil`, which leaves the emitted SurrealQL unchanged. `CountRelated`
+  is deliberately **not** given `conditions` -- surql-py does not filter it
+  either, and diverging would break the 1:1 contract.
+
 ## [0.4.0] - 2026-07-30
 
 ### Added

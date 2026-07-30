@@ -69,6 +69,43 @@ func recordToString(record any, role string) (string, error) {
 	}
 }
 
+// applyConditions appends each entry of conditions to q as a WHERE
+// clause. Entries combine with AND and each is rendered by
+// [Query.Where], so raw SurrealQL strings and types.Operator values are
+// both accepted and may be mixed in one slice. A nil or empty slice is
+// a no-op, which is what keeps the emitted SurrealQL unchanged for
+// callers that do not filter.
+func applyConditions(q Query, conditions []any) (Query, error) {
+	for _, condition := range conditions {
+		next, err := q.Where(condition)
+		if err != nil {
+			return Query{}, err
+		}
+		q = next
+	}
+	return q, nil
+}
+
+// selectTraversalSurql renders `SELECT * FROM <start><path> [WHERE ...];`.
+//
+// Split out from the helpers so statement construction is testable
+// without a live client.
+func selectTraversalSurql(start, path string, conditions []any) (string, error) {
+	q, err := NewQuery().Select(nil).FromTable(start)
+	if err != nil {
+		return "", err
+	}
+	q, err = applyConditions(q.Traverse(path), conditions)
+	if err != nil {
+		return "", err
+	}
+	stmt, err := q.ToSurql()
+	if err != nil {
+		return "", err
+	}
+	return stmt + ";", nil
+}
+
 // Traverse navigates the graph from a starting record along a raw
 // SurrealQL path (e.g. `->likes->post`, `<-follows<-user`) and returns
 // the destination rows. Mirrors surql-py's traverse.
@@ -76,11 +113,18 @@ func recordToString(record any, role string) (string, error) {
 // Path is injected verbatim — callers compose paths from validated
 // identifiers via TraverseWithDepth or by building the path
 // themselves.
+//
+// conditions are appended as WHERE clauses combined with AND; each
+// entry may be a raw SurrealQL string or a types.Operator. Pass nil to
+// filter nothing. This is the hook for row-level isolation — a
+// traversal that must stay inside a tenant boundary carries its guard
+// here rather than abandoning the helper.
 func Traverse(
 	ctx context.Context,
 	client *connection.DatabaseClient,
 	start any,
 	path string,
+	conditions []any,
 ) ([]map[string]any, error) {
 	if client == nil {
 		return nil, surqlerrors.New(surqlerrors.ErrValidation, "client cannot be nil")
@@ -92,7 +136,11 @@ func Traverse(
 	if path == "" {
 		return nil, surqlerrors.New(surqlerrors.ErrValidation, "path cannot be empty")
 	}
-	raw, err := client.Query(ctx, fmt.Sprintf("SELECT * FROM %s%s;", startStr, path))
+	stmt, err := selectTraversalSurql(startStr, path, conditions)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := client.Query(ctx, stmt)
 	if err != nil {
 		return nil, err
 	}
@@ -111,6 +159,7 @@ func TraverseWithDepth(
 	edgeTable, targetTable string,
 	direction TraverseDirection,
 	depth *int,
+	conditions []any,
 ) ([]map[string]any, error) {
 	if client == nil {
 		return nil, surqlerrors.New(surqlerrors.ErrValidation, "client cannot be nil")
@@ -133,7 +182,7 @@ func TraverseWithDepth(
 		depthStr = fmt.Sprintf("%d", *depth)
 	}
 	path := fmt.Sprintf("%s%s%s%s%s", arrow, edgeTable, depthStr, arrow, targetTable)
-	return Traverse(ctx, client, start, path)
+	return Traverse(ctx, client, start, path, conditions)
 }
 
 // CreateRelation opens a single RELATE statement between two records,
@@ -210,6 +259,7 @@ func GetOutgoingEdges(
 	client *connection.DatabaseClient,
 	record any,
 	edgeTable string,
+	conditions []any,
 ) ([]map[string]any, error) {
 	if client == nil {
 		return nil, surqlerrors.New(surqlerrors.ErrValidation, "client cannot be nil")
@@ -221,7 +271,10 @@ func GetOutgoingEdges(
 	if err != nil {
 		return nil, err
 	}
-	stmt := fmt.Sprintf("SELECT * FROM %s->%s;", recordStr, edgeTable)
+	stmt, err := selectTraversalSurql(recordStr, "->"+edgeTable, conditions)
+	if err != nil {
+		return nil, err
+	}
 	raw, err := client.Query(ctx, stmt)
 	if err != nil {
 		if isTableMissingError(err) {
@@ -233,12 +286,20 @@ func GetOutgoingEdges(
 }
 
 // GetIncomingEdges returns every edge of `edgeTable` terminating at
-// `record`. Mirrors surql-py's get_incoming_edges.
+// `record`.
+//
+// Deviates from the Python source's `FROM <-edge<-record` ordering:
+// SurrealDB v3 requires the record at the head of the `FROM`
+// expression (`FROM record<-edge`). The Python shape is a parse error
+// on v3 -- verified against v3.0.5, which rejects
+// `SELECT * FROM <-follows<-person:bob` with "Unexpected token `;`".
+// This matches the ordering the Rust port already uses.
 func GetIncomingEdges(
 	ctx context.Context,
 	client *connection.DatabaseClient,
 	record any,
 	edgeTable string,
+	conditions []any,
 ) ([]map[string]any, error) {
 	if client == nil {
 		return nil, surqlerrors.New(surqlerrors.ErrValidation, "client cannot be nil")
@@ -250,7 +311,10 @@ func GetIncomingEdges(
 	if err != nil {
 		return nil, err
 	}
-	stmt := fmt.Sprintf("SELECT * FROM <-%s<-%s;", edgeTable, recordStr)
+	stmt, err := selectTraversalSurql(recordStr, "<-"+edgeTable, conditions)
+	if err != nil {
+		return nil, err
+	}
 	raw, err := client.Query(ctx, stmt)
 	if err != nil {
 		if isTableMissingError(err) {
@@ -271,6 +335,7 @@ func GetRelatedRecords(
 	record any,
 	edgeTable, targetTable string,
 	direction TraverseDirection,
+	conditions []any,
 ) ([]map[string]any, error) {
 	if client == nil {
 		return nil, surqlerrors.New(surqlerrors.ErrValidation, "client cannot be nil")
@@ -297,7 +362,11 @@ func GetRelatedRecords(
 			"invalid direction %q: must be \"out\" or \"in\"", string(direction),
 		)
 	}
-	raw, err := client.Query(ctx, fmt.Sprintf("SELECT * FROM %s%s;", recordStr, path))
+	stmt, err := selectTraversalSurql(recordStr, path, conditions)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := client.Query(ctx, stmt)
 	if err != nil {
 		if isTableMissingError(err) {
 			return nil, nil
@@ -328,20 +397,29 @@ func CountRelated(
 	if err != nil {
 		return 0, err
 	}
-	var target string
+	var path string
 	switch direction {
 	case TraverseOut, "":
-		target = fmt.Sprintf("%s->%s", recordStr, edgeTable)
+		path = "->" + edgeTable
 	case TraverseIn:
-		target = fmt.Sprintf("<-%s<-%s", edgeTable, recordStr)
+		// Record-first, as in GetIncomingEdges: `FROM <-edge<-record`
+		// is a parse error on SurrealDB v3.
+		path = "<-" + edgeTable
 	default:
 		return 0, surqlerrors.Newf(
 			surqlerrors.ErrValidation,
 			"invalid direction %q: must be \"out\" or \"in\"", string(direction),
 		)
 	}
-	stmt := fmt.Sprintf("SELECT count() FROM %s GROUP ALL;", target)
-	raw, err := client.Query(ctx, stmt)
+	counted, err := NewQuery().Select([]string{"count()"}).FromTable(recordStr)
+	if err != nil {
+		return 0, err
+	}
+	stmt, err := counted.Traverse(path).GroupAll().ToSurql()
+	if err != nil {
+		return 0, err
+	}
+	raw, err := client.Query(ctx, stmt+";")
 	if err != nil {
 		if isTableMissingError(err) {
 			return 0, nil
@@ -372,6 +450,7 @@ func ShortestPath(
 	fromRecord, toRecord any,
 	edgeTable string,
 	maxDepth int,
+	conditions []any,
 ) ([]map[string]any, error) {
 	if client == nil {
 		return nil, surqlerrors.New(surqlerrors.ErrValidation, "client cannot be nil")
@@ -393,7 +472,14 @@ func ShortestPath(
 	step := "->" + edgeTable + "->?"
 	for depth := 1; depth <= maxDepth; depth++ {
 		path := strings.Repeat(step, depth)
-		stmt := fmt.Sprintf("SELECT * FROM %s%s WHERE id = %s;", fromStr, path, toStr)
+		// The identity predicate leads; caller guards narrow it further.
+		guards := make([]any, 0, len(conditions)+1)
+		guards = append(guards, fmt.Sprintf("id = %s", toStr))
+		guards = append(guards, conditions...)
+		stmt, err := selectTraversalSurql(fromStr, path, guards)
+		if err != nil {
+			return nil, err
+		}
 		raw, err := client.Query(ctx, stmt)
 		if err != nil {
 			if isTableMissingError(err) {
