@@ -11,7 +11,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Oneiriq/surql-go/pkg/surql"
 	"github.com/Oneiriq/surql-go/pkg/surql/connection"
 	"github.com/Oneiriq/surql-go/pkg/surql/settings"
 )
@@ -23,11 +22,6 @@ type BuildInfo struct {
 	Version string
 	Commit  string
 	Date    string
-}
-
-// defaultBuildInfo resolves to the library version when no ldflags are set.
-func defaultBuildInfo() BuildInfo {
-	return BuildInfo{Version: surql.Version}
 }
 
 // globalFlags captures process-level flags applied to every subcommand.

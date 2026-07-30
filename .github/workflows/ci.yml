@@ -17,25 +17,24 @@ jobs:
   lint:
     name: golangci-lint
     runs-on: [self-hosted, aur0]
-    # golangci-lint v2.1.x is built with Go 1.24 and panics ("package
-    # requires newer Go version go1.26") when linting a module with
-    # `go 1.26` in go.mod. Marked continue-on-error until a
-    # golangci-lint release with Go 1.26 support ships. `go vet` in the
-    # quality matrix still enforces correctness.
-    continue-on-error: true
+    # go-version-file keeps the toolchain in lockstep with go.mod so the
+    # loader can parse the module regardless of what Go the runner image
+    # ships. golangci-lint v2.12.x is built with Go 1.26, which lifts the
+    # old "package requires newer Go version" panic that forced this job
+    # to run continue-on-error.
     steps:
       - uses: actions/checkout@v6
 
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.24'
+          go-version-file: go.mod
           cache-dependency-path: go.sum
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.1.6
+          version: v2.12.2
 
   quality:
     # macOS coverage moved to nightly.yml; PR-time runs Linux only on the
@@ -82,9 +81,19 @@ jobs:
 
       - name: Start SurrealDB
         run: |
+          # On self-hosted runners a stopped container from an aborted
+          # prior run can still own the name; idempotent removal avoids a
+          # "container name already in use" 409.
+          docker rm -f surrealdb >/dev/null 2>&1 || true
+          # The runner is itself a container, so a host-published port
+          # (-p 8000:8000) is not reachable via localhost from job steps
+          # when the runner sits on a bridge network. Join SurrealDB to
+          # this job's network namespace instead ($(hostname) is the
+          # runner's container id); localhost:8000 then works no matter
+          # how the runner container is networked.
           docker run -d \
             --name surrealdb \
-            -p 8000:8000 \
+            --network "container:$(hostname)" \
             surrealdb/surrealdb:v3.0.5 \
             start --user root --pass root memory
           for i in $(seq 1 20); do
@@ -95,6 +104,9 @@ jobs:
             echo "Waiting for SurrealDB... attempt $i"
             sleep 2
           done
+          # Fail the step here if the server never came up, instead of
+          # letting every test fail with connection errors later.
+          curl -sf http://localhost:8000/health
 
       - name: Set up Go
         uses: actions/setup-go@v6
