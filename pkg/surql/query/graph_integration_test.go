@@ -39,6 +39,7 @@ func TestIntegration_Traverse(t *testing.T) {
 	got, err := Traverse(ctx, client,
 		"surqlgo_graph_user:alice",
 		"->surqlgo_graph_likes->surqlgo_graph_post",
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("Traverse: %v", err)
@@ -51,7 +52,7 @@ func TestIntegration_Traverse(t *testing.T) {
 	got2, err := TraverseWithDepth(ctx, client,
 		"surqlgo_graph_user:alice",
 		"surqlgo_graph_likes", "surqlgo_graph_post",
-		TraverseOut, nil,
+		TraverseOut, nil, nil,
 	)
 	if err != nil {
 		t.Fatalf("TraverseWithDepth: %v", err)
@@ -87,7 +88,7 @@ func TestIntegration_ShortestPath(t *testing.T) {
 
 	got, err := ShortestPath(ctx, client,
 		"surqlgo_graph_sp_user:a", "surqlgo_graph_sp_user:c",
-		"surqlgo_graph_sp_follows", 5,
+		"surqlgo_graph_sp_follows", 5, nil,
 	)
 	if err != nil {
 		t.Fatalf("ShortestPath: %v", err)
