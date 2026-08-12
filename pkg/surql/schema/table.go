@@ -37,12 +37,17 @@ const (
 	IndexTypeSearch   IndexType = "SEARCH"
 	IndexTypeMTree    IndexType = "MTREE"
 	IndexTypeHNSW     IndexType = "HNSW"
+	// IndexTypeDiskAnn is an on-disk approximate-nearest-neighbour graph
+	// (SurrealDB 3.2+). The graph lives on disk rather than in memory, so an
+	// index outgrows RAM without outgrowing the box. Build it with DiskAnnIndex.
+	IndexTypeDiskAnn IndexType = "DISKANN"
 )
 
 // IsValid reports whether the IndexType is recognised.
 func (t IndexType) IsValid() bool {
 	switch t {
-	case IndexTypeStandard, IndexTypeUnique, IndexTypeSearch, IndexTypeMTree, IndexTypeHNSW:
+	case IndexTypeStandard, IndexTypeUnique, IndexTypeSearch, IndexTypeMTree,
+		IndexTypeHNSW, IndexTypeDiskAnn:
 		return true
 	}
 	return false
@@ -95,23 +100,76 @@ func (d HnswDistanceType) IsValid() bool {
 	return false
 }
 
-// MTreeVectorType enumerates the vector component numeric types supported by
-// both MTREE and HNSW indexes.
+// DiskAnnDistanceType enumerates distance metrics for DISKANN indexes.
+//
+// Its own type rather than a reuse of HnswDistanceType: the engine's DISKANN
+// set both adds metrics HNSW lacks (INNER_PRODUCT, COSINE_NORMALIZED) and
+// refuses every HNSW metric outside it, so an out-of-set metric is
+// unrepresentable here.
+type DiskAnnDistanceType string
+
+// DiskAnnDistanceType values.
+const (
+	DiskAnnDistanceCosine           DiskAnnDistanceType = "COSINE"
+	DiskAnnDistanceCosineNormalized DiskAnnDistanceType = "COSINE_NORMALIZED"
+	DiskAnnDistanceEuclidean        DiskAnnDistanceType = "EUCLIDEAN"
+	DiskAnnDistanceInnerProduct     DiskAnnDistanceType = "INNER_PRODUCT"
+)
+
+// IsValid reports whether the DiskAnnDistanceType is recognised.
+func (d DiskAnnDistanceType) IsValid() bool {
+	switch d {
+	case DiskAnnDistanceCosine, DiskAnnDistanceCosineNormalized,
+		DiskAnnDistanceEuclidean, DiskAnnDistanceInnerProduct:
+		return true
+	}
+	return false
+}
+
+// MTreeVectorType enumerates the vector component numeric types. One shared
+// vocabulary; each index kind accepts a subset. The engine takes every value
+// for HNSW, refuses F16 / I8 / U8 for MTREE, and refuses everything but
+// F32 / F16 / I8 / U8 for DISKANN. IndexDefinition.Validate teaches those
+// limits before a statement is sent.
 type MTreeVectorType string
 
 // MTreeVectorType values.
 const (
 	MTreeVectorF64 MTreeVectorType = "F64"
 	MTreeVectorF32 MTreeVectorType = "F32"
+	MTreeVectorF16 MTreeVectorType = "F16"
 	MTreeVectorI64 MTreeVectorType = "I64"
 	MTreeVectorI32 MTreeVectorType = "I32"
 	MTreeVectorI16 MTreeVectorType = "I16"
+	MTreeVectorI8  MTreeVectorType = "I8"
+	MTreeVectorU8  MTreeVectorType = "U8"
 )
 
 // IsValid reports whether the MTreeVectorType is recognised.
 func (v MTreeVectorType) IsValid() bool {
 	switch v {
+	case MTreeVectorF64, MTreeVectorF32, MTreeVectorF16, MTreeVectorI64,
+		MTreeVectorI32, MTreeVectorI16, MTreeVectorI8, MTreeVectorU8:
+		return true
+	}
+	return false
+}
+
+// ValidForMTree reports whether MTREE parses this element type. MTREE takes
+// only its historical five; the narrow three are a parse error with no
+// teaching message from the engine.
+func (v MTreeVectorType) ValidForMTree() bool {
+	switch v {
 	case MTreeVectorF64, MTreeVectorF32, MTreeVectorI64, MTreeVectorI32, MTreeVectorI16:
+		return true
+	}
+	return false
+}
+
+// ValidForDiskAnn reports whether DISKANN accepts this element type.
+func (v MTreeVectorType) ValidForDiskAnn() bool {
+	switch v {
+	case MTreeVectorF32, MTreeVectorF16, MTreeVectorI8, MTreeVectorU8:
 		return true
 	}
 	return false
@@ -134,6 +192,17 @@ type IndexDefinition struct {
 	HnswDistance HnswDistanceType
 	EFC          int // zero means unset
 	M            int // zero means unset
+
+	// DISKANN-specific. Degree, LBuild, and Alpha carry the engine's own
+	// defaults rather than staying unset, because the engine echoes them back
+	// filled in; see the DiskAnnDefault constants. Alpha is the decimal literal
+	// the statement carries, since the engine echoes a float with a trailing f
+	// suffix (ALPHA 1.2f) that the parser strips.
+	DiskAnnDistance DiskAnnDistanceType
+	Degree          int // zero means unset
+	LBuild          int // zero means unset
+	Alpha           string
+	HashedVector    bool
 
 	// Full-text SEARCH-specific. Analyzer is the analyzer name; an empty
 	// string renders the historical default (`ascii`). BM25 emits the
@@ -413,6 +482,65 @@ func HnswIndex(name, column string, dimension int, opts HnswIndexOptions) IndexD
 	}
 }
 
+// Engine defaults a DISKANN index echoes back when the definition never stated
+// them. The builder fills the same values up front so a definition compares
+// equal to its own echo instead of re-applying on every reconcile.
+const (
+	DiskAnnDefaultDegree = 64
+	DiskAnnDefaultLBuild = 100
+	DiskAnnDefaultAlpha  = "1.2"
+)
+
+// CanonicalAlpha renders a DISKANN ALPHA value the way the engine echoes it: a
+// whole number bare (ALPHA 2) and a fractional one as a plain decimal, which is
+// what a float echo (ALPHA 1.2f) reads back as once its suffix is stripped.
+func CanonicalAlpha(alpha float64) string {
+	return strconv.FormatFloat(alpha, 'f', -1, 64)
+}
+
+// DiskAnnIndexOptions configures a DISKANN vector index. Degree, LBuild, and
+// Alpha are optional; zero (or empty) takes the engine default, which is then
+// spelled explicitly in the rendered statement.
+type DiskAnnIndexOptions struct {
+	Distance     DiskAnnDistanceType
+	VectorType   MTreeVectorType
+	Degree       int
+	LBuild       int
+	Alpha        string
+	HashedVector bool
+}
+
+// DiskAnnIndex builds a DISKANN IndexDefinition.
+func DiskAnnIndex(name, column string, dimension int, opts DiskAnnIndexOptions) IndexDefinition {
+	if opts.Distance == "" {
+		opts.Distance = DiskAnnDistanceEuclidean
+	}
+	if opts.VectorType == "" {
+		opts.VectorType = MTreeVectorF32
+	}
+	if opts.Degree == 0 {
+		opts.Degree = DiskAnnDefaultDegree
+	}
+	if opts.LBuild == 0 {
+		opts.LBuild = DiskAnnDefaultLBuild
+	}
+	if opts.Alpha == "" {
+		opts.Alpha = DiskAnnDefaultAlpha
+	}
+	return IndexDefinition{
+		Name:            name,
+		Columns:         []string{column},
+		Type:            IndexTypeDiskAnn,
+		Dimension:       dimension,
+		VectorType:      opts.VectorType,
+		DiskAnnDistance: opts.Distance,
+		Degree:          opts.Degree,
+		LBuild:          opts.LBuild,
+		Alpha:           opts.Alpha,
+		HashedVector:    opts.HashedVector,
+	}
+}
+
 // Validate verifies structural invariants of the index definition.
 func (i IndexDefinition) Validate() error {
 	if i.Name == "" {
@@ -447,6 +575,11 @@ func (i IndexDefinition) Validate() error {
 			return surqlerrors.Newf(surqlerrors.ErrValidation,
 				"MTREE index %q has invalid vector type %q", i.Name, string(i.VectorType))
 		}
+		if i.VectorType != "" && !i.VectorType.ValidForMTree() {
+			return surqlerrors.Newf(surqlerrors.ErrValidation,
+				"MTREE index %q cannot use TYPE %s: the engine only accepts "+
+					"F64, F32, I64, I32, or I16 for MTREE", i.Name, string(i.VectorType))
+		}
 	case IndexTypeHNSW:
 		if i.Dimension <= 0 {
 			return surqlerrors.Newf(surqlerrors.ErrValidation,
@@ -459,6 +592,33 @@ func (i IndexDefinition) Validate() error {
 		if i.VectorType != "" && !i.VectorType.IsValid() {
 			return surqlerrors.Newf(surqlerrors.ErrValidation,
 				"HNSW index %q has invalid vector type %q", i.Name, string(i.VectorType))
+		}
+	case IndexTypeDiskAnn:
+		if i.Dimension <= 0 {
+			return surqlerrors.Newf(surqlerrors.ErrValidation,
+				"DISKANN index %q requires a positive dimension", i.Name)
+		}
+		if i.DiskAnnDistance != "" && !i.DiskAnnDistance.IsValid() {
+			return surqlerrors.Newf(surqlerrors.ErrValidation,
+				"DISKANN index %q has invalid distance %q", i.Name, string(i.DiskAnnDistance))
+		}
+		if i.VectorType != "" && !i.VectorType.IsValid() {
+			return surqlerrors.Newf(surqlerrors.ErrValidation,
+				"DISKANN index %q has invalid vector type %q", i.Name, string(i.VectorType))
+		}
+		if i.VectorType != "" && !i.VectorType.ValidForDiskAnn() {
+			return surqlerrors.Newf(surqlerrors.ErrValidation,
+				"DISKANN index %q cannot use TYPE %s: the engine only accepts "+
+					"F32, F16, I8, or U8 for DISKANN", i.Name, string(i.VectorType))
+		}
+		// A metric aimed at DISKANN through the MTREE or HNSW member would be
+		// dropped by the renderer, so the mistake is refused rather than
+		// silently ignored.
+		if i.Distance != "" || i.HnswDistance != "" {
+			return surqlerrors.Newf(surqlerrors.ErrValidation,
+				"DISKANN index %q takes its metric through DiskAnnDistance "+
+					"(EUCLIDEAN, COSINE, INNER_PRODUCT, or COSINE_NORMALIZED); the engine "+
+					"refuses every other MTREE/HNSW metric for DISKANN", i.Name)
 		}
 	}
 	return nil
@@ -530,6 +690,56 @@ func (i IndexDefinition) toSurql(tableName string, ifNotExists bool) string {
 		if i.M > 0 {
 			b.WriteString(" M ")
 			b.WriteString(strconv.Itoa(i.M))
+		}
+		b.WriteString(";")
+		return b.String()
+
+	case IndexTypeDiskAnn:
+		// The engine always echoes DIST / TYPE / DEGREE / L_BUILD / ALPHA back
+		// with its defaults filled in, even when the definition never stated
+		// them, so this spells them all. A definition that omitted one would
+		// never compare equal to its own echo, and a reconcile would re-apply
+		// the index on every boot.
+		field := ""
+		if len(i.Columns) > 0 {
+			field = i.Columns[0]
+		}
+		distance := i.DiskAnnDistance
+		if distance == "" {
+			distance = DiskAnnDistanceEuclidean
+		}
+		vectorType := i.VectorType
+		if vectorType == "" {
+			vectorType = MTreeVectorF32
+		}
+		degree := i.Degree
+		if degree == 0 {
+			degree = DiskAnnDefaultDegree
+		}
+		lBuild := i.LBuild
+		if lBuild == 0 {
+			lBuild = DiskAnnDefaultLBuild
+		}
+		alpha := i.Alpha
+		if alpha == "" {
+			alpha = DiskAnnDefaultAlpha
+		}
+		b.WriteString(" COLUMNS ")
+		b.WriteString(field)
+		b.WriteString(" DISKANN DIMENSION ")
+		b.WriteString(strconv.Itoa(i.Dimension))
+		b.WriteString(" DIST ")
+		b.WriteString(string(distance))
+		b.WriteString(" TYPE ")
+		b.WriteString(string(vectorType))
+		b.WriteString(" DEGREE ")
+		b.WriteString(strconv.Itoa(degree))
+		b.WriteString(" L_BUILD ")
+		b.WriteString(strconv.Itoa(lBuild))
+		b.WriteString(" ALPHA ")
+		b.WriteString(alpha)
+		if i.HashedVector {
+			b.WriteString(" HASHED_VECTOR")
 		}
 		b.WriteString(";")
 		return b.String()

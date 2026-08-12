@@ -24,6 +24,43 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   express it and had to abandon the helpers for a hand-rolled
   equality-filtered edge table.
 
+- **DISKANN vector indexes and the F16 element type (SurrealDB 3.2).**
+  `IndexTypeDiskAnn` and `DiskAnnIndex(name, column, dimension,
+  DiskAnnIndexOptions{...})` define the on-disk ANN graph the 3.2 engine
+  parses, with `DiskAnnDistanceType` for the metric (`COSINE` /
+  `COSINE_NORMALIZED` / `EUCLIDEAN` / `INNER_PRODUCT`). It is its own type
+  because the engine's DISKANN metric set neither contains nor is contained by
+  the HNSW one, so an out-of-set metric is unrepresentable rather than merely
+  refused. `MTreeVectorType` gained `F16`, `I8`, and `U8`, which HNSW also
+  accepts, alongside `ValidForMTree` / `ValidForDiskAnn` predicates. The
+  schema emitter, the `INFO FOR TABLE` parser, and the migration diff all
+  carry the new form.
+
+  The engine echoes a DISKANN index with `DIST` / `TYPE` / `DEGREE` /
+  `L_BUILD` / `ALPHA` always spelled, defaults `EUCLIDEAN` / `F32` / 64 / 100
+  / 1.2 filled in even when the definition never stated them, and a float
+  `ALPHA` carrying a trailing `f` suffix (`ALPHA 1.2f`). The emitter spells
+  the defaults, `CanonicalAlpha` renders a whole number bare (`ALPHA 2`), and
+  the parser excludes the `f` from its capture, so a definition compares equal
+  to its own echo instead of re-applying on every reconcile.
+
+  `IndexDefinition.Validate` refuses what the engine refuses, by name: a
+  DISKANN element type outside `F32` / `F16` / `I8` / `U8`, an MTREE element
+  type among the new `F16` / `I8` / `U8` (MTREE still parses only its
+  historical five), and an MTREE/HNSW metric aimed at a DISKANN index, which
+  only `DiskAnnDistance` can carry.
+
+- **`Query.VectorSearchIndexed(field, vector, k, ef)` reaches a vector
+  index.** The second argument of the KNN operator decides the plan: an
+  integer is the exploration factor and the engine answers with a `KnnScan`
+  over the field's HNSW or DISKANN index, while a metric keyword there asks
+  for an exhaustive `KnnTopK` over a table scan. Only the metric form existed,
+  so a query against an indexed column scanned the table and the index it was
+  paying to build served nothing. `VectorSearch` keeps its meaning for a
+  deliberate exhaustive comparison; reach for the new method whenever the
+  column carries an index. The metric belongs to the index, so the new method
+  takes none.
+
 ### Fixed
 
 - **`GetIncomingEdges` and `CountRelated` (incoming direction) were broken on
@@ -33,6 +70,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   Both now put the record at the head of the `FROM` expression
   (`FROM record<-edge`), matching the ordering the Rust port already used.
   Any caller relying on incoming-edge traversal was receiving a parse error.
+
+- **The `INFO FOR TABLE` parser dropped unrecognised vector element types.**
+  `extractVectorType` matched against a fixed set of five, so an index
+  defined with any newer element type parsed back with an empty type and the
+  next reconcile saw a difference that was not there. The map now covers every
+  member of `MTreeVectorType`.
 
 ### Changed
 

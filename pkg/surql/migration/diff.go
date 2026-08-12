@@ -998,15 +998,29 @@ func fieldToSQL(tableName string, f schema.FieldDefinition) (string, error) {
 // diff and the schema generator stay byte-for-byte consistent (a full-text
 // index emits the SurrealDB 3.x FULLTEXT keyword plus its analyzer / BM25 /
 // HIGHLIGHTS clauses); MTREE and HNSW flavours route through their dedicated
-// helpers. Returns ErrValidation for MTREE / HNSW indexes missing a dimension.
+// helpers. Returns ErrValidation for a vector index missing a dimension.
 func indexToSQL(tableName string, idx schema.IndexDefinition) (string, error) {
 	switch idx.Type {
 	case schema.IndexTypeMTree:
 		return mtreeIndexToSQL(tableName, idx)
 	case schema.IndexTypeHNSW:
 		return hnswIndexToSQL(tableName, idx)
+	case schema.IndexTypeDiskAnn:
+		return diskAnnIndexToSQL(tableName, idx)
 	}
 
+	return idx.ToSurql(tableName), nil
+}
+
+// diskAnnIndexToSQL guards the dimension and then delegates to the canonical
+// renderer. Unlike the MTREE and HNSW helpers it does not restate the clause
+// order, because the DISKANN form has engine defaults that must be spelled
+// exactly and a second copy of them is a second place to get them wrong.
+func diskAnnIndexToSQL(tableName string, idx schema.IndexDefinition) (string, error) {
+	if idx.Dimension <= 0 {
+		return "", surqlerrors.Newf(surqlerrors.ErrValidation,
+			"DISKANN index %q must have dimension specified", idx.Name)
+	}
 	return idx.ToSurql(tableName), nil
 }
 

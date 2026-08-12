@@ -207,6 +207,14 @@ func ParseIndex(indexName, definition string) (IndexDefinition, error) {
 		idx.HnswDistance = extractHnswDistance(definition)
 		idx.EFC = extractHnswEFC(definition)
 		idx.M = extractHnswM(definition)
+	case IndexTypeDiskAnn:
+		idx.Dimension = extractMtreeDimension(definition)
+		idx.VectorType = extractVectorType(definition)
+		idx.DiskAnnDistance = extractDiskAnnDistance(definition)
+		idx.Degree = extractDiskAnnDegree(definition)
+		idx.LBuild = extractDiskAnnLBuild(definition)
+		idx.Alpha = extractDiskAnnAlpha(definition)
+		idx.HashedVector = strings.Contains(strings.ToUpper(definition), "HASHED_VECTOR")
 	case IndexTypeSearch:
 		idx.Analyzer = extractIndexAnalyzer(definition)
 		up := strings.ToUpper(definition)
@@ -545,14 +553,20 @@ func extractFlexible(def string) bool {
 // -----------------------------------------------------------------------------
 
 var (
-	reIndexColumns = regexp.MustCompile(`(?i)COLUMNS\s+([^;]+?)(?:\s+UNIQUE\b|\s+FULLTEXT\b|\s+SEARCH\b|\s+HNSW\b|\s+MTREE\b|\s*;|\s*$)`)
-	reIndexFields  = regexp.MustCompile(`(?i)FIELDS\s+([^;]+?)(?:\s+UNIQUE\b|\s+FULLTEXT\b|\s+SEARCH\b|\s+HNSW\b|\s+MTREE\b|\s*;|\s*$)`)
+	reIndexColumns = regexp.MustCompile(`(?i)COLUMNS\s+([^;]+?)(?:\s+UNIQUE\b|\s+FULLTEXT\b|\s+SEARCH\b|\s+HNSW\b|\s+MTREE\b|\s+DISKANN\b|\s*;|\s*$)`)
+	reIndexFields  = regexp.MustCompile(`(?i)FIELDS\s+([^;]+?)(?:\s+UNIQUE\b|\s+FULLTEXT\b|\s+SEARCH\b|\s+HNSW\b|\s+MTREE\b|\s+DISKANN\b|\s*;|\s*$)`)
 	reIndexDim     = regexp.MustCompile(`(?i)DIMENSION\s+(\d+)`)
 	reIndexDist    = regexp.MustCompile(`(?i)(?:DIST|DISTANCE)\s+([A-Za-z_]\w*)`)
 	reVectorType   = regexp.MustCompile(`(?i)TYPE\s+([A-Za-z_]\w*)`)
 	reIndexEFC     = regexp.MustCompile(`(?i)\bEFC\s+(\d+)`)
 	reIndexM       = regexp.MustCompile(`(?i)\bM\s+(\d+)`)
 	reIndexAnlzr   = regexp.MustCompile(`(?i)ANALYZER\s+(\w+)`)
+	reIndexDegree  = regexp.MustCompile(`(?i)\bDEGREE\s+(\d+)`)
+	reIndexLBuild  = regexp.MustCompile(`(?i)\bL_BUILD\s+(\d+)`)
+	// The engine echoes a float ALPHA with a trailing f suffix (ALPHA 1.2f)
+	// and an integer one bare (ALPHA 2). The capture excludes the suffix so
+	// the stored value matches what code declares.
+	reIndexAlpha = regexp.MustCompile(`(?i)\bALPHA\s+(\d+(?:\.\d+)?)`)
 )
 
 func splitColumns(raw string) []string {
@@ -590,6 +604,8 @@ func extractIndexType(def string) IndexType {
 		return IndexTypeHNSW
 	case strings.Contains(up, "MTREE"):
 		return IndexTypeMTree
+	case strings.Contains(up, "DISKANN"):
+		return IndexTypeDiskAnn
 	case strings.Contains(up, "FULLTEXT"), strings.Contains(up, "SEARCH"):
 		// SurrealDB 3.x renamed the full-text keyword SEARCH -> FULLTEXT;
 		// recognise both spellings so v1/v2 and v3 INFO output round-trip.
@@ -661,9 +677,12 @@ func extractHnswDistance(def string) HnswDistanceType {
 var vectorTypeMap = map[string]MTreeVectorType{
 	"F64": MTreeVectorF64,
 	"F32": MTreeVectorF32,
+	"F16": MTreeVectorF16,
 	"I64": MTreeVectorI64,
 	"I32": MTreeVectorI32,
 	"I16": MTreeVectorI16,
+	"I8":  MTreeVectorI8,
+	"U8":  MTreeVectorU8,
 }
 
 func extractVectorType(def string) MTreeVectorType {
@@ -671,6 +690,44 @@ func extractVectorType(def string) MTreeVectorType {
 		if v, ok := vectorTypeMap[strings.ToUpper(m[1])]; ok {
 			return v
 		}
+	}
+	return ""
+}
+
+// extractDiskAnnDistance pulls the DIST metric out of a DISKANN definition.
+// COSINE_NORMALIZED and INNER_PRODUCT carry an underscore, which the shared
+// distance pattern already admits.
+func extractDiskAnnDistance(def string) DiskAnnDistanceType {
+	if m := reIndexDist.FindStringSubmatch(def); len(m) == 2 {
+		d := DiskAnnDistanceType(strings.ToUpper(m[1]))
+		if d.IsValid() {
+			return d
+		}
+	}
+	return ""
+}
+
+func extractDiskAnnDegree(def string) int {
+	if m := reIndexDegree.FindStringSubmatch(def); len(m) == 2 {
+		if n, err := strconv.Atoi(m[1]); err == nil {
+			return n
+		}
+	}
+	return 0
+}
+
+func extractDiskAnnLBuild(def string) int {
+	if m := reIndexLBuild.FindStringSubmatch(def); len(m) == 2 {
+		if n, err := strconv.Atoi(m[1]); err == nil {
+			return n
+		}
+	}
+	return 0
+}
+
+func extractDiskAnnAlpha(def string) string {
+	if m := reIndexAlpha.FindStringSubmatch(def); len(m) == 2 {
+		return m[1]
 	}
 	return ""
 }
