@@ -78,6 +78,9 @@ nav:
       - Query Builder: queries.md
       - Query UX Helpers: query-ux.md
       - Query Hints: query_hints.md
+      - Vector Search: vectors.md
+      - Graph Traversal: graph.md
+      - Object Storage and Sessions: objects.md
       - v3 Patterns: v3-patterns.md
       - Visualization: visualization.md
   - Reference:
