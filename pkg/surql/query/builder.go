@@ -98,6 +98,7 @@ type Query struct {
 	VectorK         *int
 	VectorDistance  VectorDistanceType
 	VectorThreshold *float64
+	VectorEF        *int
 
 	// Full-text search parameters (the `@@` / `@n@` matches operator).
 	// FulltextField is the matched column; FulltextReference is the match
@@ -466,6 +467,48 @@ func (q Query) VectorSearch(
 	return out, nil
 }
 
+// VectorSearchIndexed configures an index-backed k-nearest-neighbour search,
+// rendering the integer exploration form `<|k,ef|>`.
+//
+// The second argument of the KNN operator decides the plan. An integer is the
+// exploration factor and the engine answers with a KnnScan over the field's
+// HNSW or DISKANN index; a metric keyword there asks for an exhaustive KnnTopK
+// over a table scan instead. Use this method whenever the field carries a
+// vector index, and VectorSearch only when an exhaustive comparison is what
+// you want.
+//
+// The metric belongs to the index, so this method takes none. The bare `<|k|>`
+// form of the KTree era is a parse error on SurrealDB 3.x.
+func (q Query) VectorSearchIndexed(
+	field string,
+	vector []float64,
+	k int,
+	ef int,
+) (Query, error) {
+	if k < 1 {
+		return Query{}, surqlerrors.Newf(surqlerrors.ErrValidation,
+			"k must be at least 1, got %d", k)
+	}
+	if ef < 1 {
+		return Query{}, surqlerrors.Newf(surqlerrors.ErrValidation,
+			"ef must be at least 1, got %d", ef)
+	}
+	if len(vector) == 0 {
+		return Query{}, surqlerrors.New(surqlerrors.ErrValidation, "Vector cannot be empty")
+	}
+	kv, efv := k, ef
+	out := q.clone()
+	out.VectorField = field
+	out.VectorValue = append([]float64(nil), vector...)
+	out.VectorK = &kv
+	out.VectorEF = &efv
+	// Clear the exhaustive members so a chained call cannot leave both forms
+	// armed and quietly fall back to a table scan.
+	out.VectorDistance = ""
+	out.VectorThreshold = nil
+	return out, nil
+}
+
 // SimilarityScore adds `vector::similarity::<metric>(field, vector) AS alias`
 // to the projection.
 func (q Query) SimilarityScore(field string, vector []float64, metric VectorDistanceType, alias string) Query {
@@ -689,12 +732,16 @@ func (q Query) buildSelect() (string, error) {
 	parts = append(parts, q.JoinClauses...)
 
 	var whereParts []string
-	if q.VectorField != "" && len(q.VectorValue) > 0 && q.VectorK != nil && q.VectorDistance != "" {
+	if q.VectorField != "" && len(q.VectorValue) > 0 && q.VectorK != nil &&
+		(q.VectorDistance != "" || q.VectorEF != nil) {
 		vec := renderVectorLiteral(q.VectorValue)
 		var op string
-		if q.VectorThreshold != nil {
+		switch {
+		case q.VectorEF != nil:
+			op = fmt.Sprintf("<|%d,%d|>", *q.VectorK, *q.VectorEF)
+		case q.VectorThreshold != nil:
 			op = fmt.Sprintf("<|%d,%s,%s|>", *q.VectorK, string(q.VectorDistance), formatFloat(*q.VectorThreshold))
-		} else {
+		default:
 			op = fmt.Sprintf("<|%d,%s|>", *q.VectorK, string(q.VectorDistance))
 		}
 		whereParts = append(whereParts, fmt.Sprintf("%s %s %s", q.VectorField, op, vec))

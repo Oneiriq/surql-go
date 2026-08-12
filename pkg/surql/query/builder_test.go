@@ -636,3 +636,64 @@ func TestSearchScore_ImmutabilityPreserved(t *testing.T) {
 		t.Errorf("got %q want %q", scoredSQL, want)
 	}
 }
+
+// The second argument of the KNN operator decides the plan: an integer is the
+// exploration factor and reaches the field's index, while a metric keyword
+// asks for an exhaustive scan.
+func TestVectorSearchIndexed_RendersTheIntegerForm(t *testing.T) {
+	q, err := Query{}.Select(nil).FromTable("documents")
+	if err != nil {
+		t.Fatalf("FromTable: %v", err)
+	}
+	q, err = q.VectorSearchIndexed("embedding", []float64{0.1, 0.2, 0.3}, 10, 40)
+	if err != nil {
+		t.Fatalf("VectorSearchIndexed: %v", err)
+	}
+	got, err := q.ToSurql()
+	if err != nil {
+		t.Fatalf("ToSurql: %v", err)
+	}
+	if want := "SELECT * FROM documents WHERE embedding <|10,40|> [0.1, 0.2, 0.3]"; got != want {
+		t.Errorf("ToSurql = %q, want %q", got, want)
+	}
+}
+
+func TestVectorSearchIndexed_ClearsAPreviouslySetMetric(t *testing.T) {
+	// Chaining must not leave both forms armed, which would render the metric
+	// and quietly return to a table scan.
+	q, err := Query{}.Select(nil).FromTable("documents")
+	if err != nil {
+		t.Fatalf("FromTable: %v", err)
+	}
+	threshold := 0.7
+	q, err = q.VectorSearch("embedding", []float64{0.1, 0.2}, 5, DistanceCosine, &threshold)
+	if err != nil {
+		t.Fatalf("VectorSearch: %v", err)
+	}
+	q, err = q.VectorSearchIndexed("embedding", []float64{0.1, 0.2}, 5, 64)
+	if err != nil {
+		t.Fatalf("VectorSearchIndexed: %v", err)
+	}
+	got, err := q.ToSurql()
+	if err != nil {
+		t.Fatalf("ToSurql: %v", err)
+	}
+	if !strings.Contains(got, "<|5,64|>") {
+		t.Errorf("indexed form missing: %q", got)
+	}
+	if strings.Contains(got, "COSINE") {
+		t.Errorf("the exhaustive metric survived: %q", got)
+	}
+}
+
+func TestVectorSearchIndexed_Refusals(t *testing.T) {
+	if _, err := (Query{}).VectorSearchIndexed("embedding", []float64{0.1}, 0, 40); err == nil {
+		t.Error("k of 0 accepted, want a refusal")
+	}
+	if _, err := (Query{}).VectorSearchIndexed("embedding", []float64{0.1}, 10, 0); err == nil {
+		t.Error("ef of 0 accepted, want a refusal")
+	}
+	if _, err := (Query{}).VectorSearchIndexed("embedding", nil, 10, 40); err == nil {
+		t.Error("empty vector accepted, want a refusal")
+	}
+}

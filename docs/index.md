@@ -20,7 +20,7 @@ Define schemas, generate migrations, build queries, and perform typed CRUD
 - **v3 Transactions** -- Native interactive `BEGIN` / `COMMIT` / `ROLLBACK`
   via `DatabaseClient.Begin`, plus raw record-id targets
   (`types.TypeRecord` / `types.TypeThing`) and `GROUP ALL` aggregation.
-- **Vector Search** -- HNSW and MTREE index support with 8 distance metrics
+- **Vector Search** -- HNSW, DISKANN, and MTREE index support with 8 distance metrics, F16 half-precision vectors, and index-backed KNN
   and EFC/M tuning.
 - **Graph Traversal** -- Native SurrealDB graph features with edge
   relationships + fluent `GraphQuery` builder.

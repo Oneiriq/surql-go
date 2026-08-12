@@ -1185,3 +1185,36 @@ func TestDiffTablesModifyFieldAndIndex(t *testing.T) {
 		t.Errorf("expected 1 add_index, got %d", len(findByOp(diffs, DiffOperationAddIndex)))
 	}
 }
+
+func TestIndexToSQL_DiskAnn(t *testing.T) {
+	idx := schema.DiskAnnIndex("emb_idx", "embedding", 1536, schema.DiskAnnIndexOptions{
+		Distance:   schema.DiskAnnDistanceCosine,
+		VectorType: schema.MTreeVectorF16,
+	})
+	got, err := indexToSQL("documents", idx)
+	if err != nil {
+		t.Fatalf("indexToSQL: %v", err)
+	}
+	want := "DEFINE INDEX emb_idx ON TABLE documents COLUMNS embedding DISKANN DIMENSION 1536 " +
+		"DIST COSINE TYPE F16 DEGREE 64 L_BUILD 100 ALPHA 1.2;"
+	if got != want {
+		t.Errorf("indexToSQL = %q, want %q", got, want)
+	}
+	// The migration path and the schema path must agree, or a migrated index
+	// differs from a reconciled one.
+	if got != idx.ToSurql("documents") {
+		t.Errorf("migration emitter and schema emitter disagree:\n got %q\nwant %q",
+			got, idx.ToSurql("documents"))
+	}
+}
+
+func TestIndexToSQL_DiskAnnRefusesAMissingDimension(t *testing.T) {
+	idx := schema.IndexDefinition{
+		Name:    "bad",
+		Columns: []string{"v"},
+		Type:    schema.IndexTypeDiskAnn,
+	}
+	if _, err := indexToSQL("documents", idx); err == nil {
+		t.Error("a zero dimension was accepted, want a refusal")
+	}
+}
