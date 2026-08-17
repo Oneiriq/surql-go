@@ -27,7 +27,7 @@ jobs:
     # old "package requires newer Go version" panic that forced this job
     # to run continue-on-error.
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -50,7 +50,7 @@ jobs:
       matrix:
         go: ['1.26', 'stable']
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -81,7 +81,7 @@ jobs:
     name: Integration
     runs-on: [self-hosted, aur0]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Start SurrealDB
         run: |
@@ -138,7 +138,7 @@ jobs:
     runs-on: [self-hosted, aur0]
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.base_ref, 'release/')
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

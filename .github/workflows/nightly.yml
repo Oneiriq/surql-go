@@ -21,7 +21,7 @@ jobs:
       matrix:
         go: ['1.26', 'stable']
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: main
 
@@ -60,7 +60,7 @@ jobs:
     # release with Go 1.26 support ships.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: main
 
@@ -79,7 +79,7 @@ jobs:
     name: Nightly govulncheck
     runs-on: [self-hosted, aur0]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: main
 
