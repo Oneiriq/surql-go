@@ -96,27 +96,33 @@ func Func(name string, args ...ExprArg) Expression {
 
 // ---------------------------------------------------------------------------
 // Aggregate functions
+//
+// These render SurrealQL's own aggregates, not their SQL namesakes: the
+// server rejects `COUNT(*)` at parse time (`*` is not an expression) and
+// has no `SUM` / `AVG` / `MIN` / `MAX` functions, which live under `math::`
+// instead. All of them aggregate per group under `GROUP BY` / `GROUP ALL`.
 // ---------------------------------------------------------------------------
 
-// Count builds `COUNT(*)` or `COUNT(field)` when fieldName is non-empty.
+// Count builds `count()`, or `count(field)` when fieldName is non-empty.
+// `count(field)` counts the rows where field is truthy.
 func Count(fieldName string) Expression {
 	if fieldName == "" {
-		return NewFunction("COUNT(*)")
+		return NewFunction("count()")
 	}
-	return NewFunction(fmt.Sprintf("COUNT(%s)", fieldName))
+	return NewFunction(fmt.Sprintf("count(%s)", fieldName))
 }
 
-// Sum builds `SUM(field)`.
-func Sum(fieldName string) Expression { return NewFunction(fmt.Sprintf("SUM(%s)", fieldName)) }
+// Sum builds `math::sum(field)`. Equivalent to [MathSum].
+func Sum(fieldName string) Expression { return MathSum(fieldName) }
 
-// Avg builds `AVG(field)`.
-func Avg(fieldName string) Expression { return NewFunction(fmt.Sprintf("AVG(%s)", fieldName)) }
+// Avg builds `math::mean(field)`. Equivalent to [MathMean].
+func Avg(fieldName string) Expression { return MathMean(fieldName) }
 
-// MinFn builds `MIN(field)`.
-func MinFn(fieldName string) Expression { return NewFunction(fmt.Sprintf("MIN(%s)", fieldName)) }
+// MinFn builds `math::min(field)`. Equivalent to [MathMin].
+func MinFn(fieldName string) Expression { return MathMin(fieldName) }
 
-// MaxFn builds `MAX(field)`.
-func MaxFn(fieldName string) Expression { return NewFunction(fmt.Sprintf("MAX(%s)", fieldName)) }
+// MaxFn builds `math::max(field)`. Equivalent to [MathMax].
+func MaxFn(fieldName string) Expression { return MathMax(fieldName) }
 
 // ---------------------------------------------------------------------------
 // String functions
@@ -221,7 +227,7 @@ func Cast(fieldName, targetType string) Expression {
 	return NewRaw(fmt.Sprintf("<%s>%s", targetType, fieldName))
 }
 
-// As aliases an expression: `As(Count(""), "total")` -> `COUNT(*) AS total`.
+// As aliases an expression: `As(Count(""), "total")` -> `count() AS total`.
 func As(expr Expression, alias string) Expression {
 	return NewRaw(fmt.Sprintf("%s AS %s", expr.ToSurql(), alias))
 }

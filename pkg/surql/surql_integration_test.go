@@ -76,7 +76,7 @@ func TestIntegration_ExtractScalar_CountRoundTrip(t *testing.T) {
 		}
 	}
 
-	// COUNT() with GROUP ALL yields one row with key "count".
+	// count() with GROUP ALL yields one row with key "count".
 	raw, err := client.Query(ctx,
 		"SELECT count() FROM surqlgo_extract_scalar GROUP ALL;")
 	if err != nil {

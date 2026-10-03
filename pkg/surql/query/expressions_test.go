@@ -1,6 +1,10 @@
 package query
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/Oneiriq/surql-go/pkg/surql/types"
+)
 
 func TestFieldAndValue(t *testing.T) {
 	if got := Field("user.name").ToSurql(); got != "user.name" {
@@ -18,20 +22,87 @@ func TestFieldAndValue(t *testing.T) {
 }
 
 func TestCount_Renders(t *testing.T) {
-	if got := Count("").ToSurql(); got != "COUNT(*)" {
+	if got := Count("").ToSurql(); got != "count()" {
 		t.Errorf("got %q", got)
 	}
-	if got := Count("id").ToSurql(); got != "COUNT(id)" {
+	if got := Count("id").ToSurql(); got != "count(id)" {
 		t.Errorf("got %q", got)
 	}
 }
 
+// The aggregate helpers must render SurrealQL's own functions. The SQL
+// spellings (`COUNT(*)`, `SUM(f)`, `AVG(f)`, `MIN(f)`, `MAX(f)`) are parse
+// errors on SurrealDB.
 func TestAggregateFunctions(t *testing.T) {
-	if Sum("price").ToSurql() != "SUM(price)" ||
-		Avg("age").ToSurql() != "AVG(age)" ||
-		MinFn("price").ToSurql() != "MIN(price)" ||
-		MaxFn("price").ToSurql() != "MAX(price)" {
-		t.Error("aggregate mismatch")
+	tests := []struct {
+		name string
+		got  Expression
+		want string
+	}{
+		{"Count all", Count(""), "count()"},
+		{"Count field", Count("active"), "count(active)"},
+		{"Sum", Sum("price"), "math::sum(price)"},
+		{"Avg", Avg("age"), "math::mean(age)"},
+		{"MinFn", MinFn("price"), "math::min(price)"},
+		{"MaxFn", MaxFn("price"), "math::max(price)"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.got.ToSurql(); got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+			if tc.got.Kind != ExprFunction {
+				t.Errorf("kind = %q, want %q", tc.got.Kind, ExprFunction)
+			}
+		})
+	}
+}
+
+// The Expression aggregates and the native factories are two spellings of
+// the same SurrealQL, so they must never drift apart.
+func TestAggregateFunctions_MatchNativeFactories(t *testing.T) {
+	tests := []struct {
+		name   string
+		got    string
+		native string
+	}{
+		{"Count all vs CountAll", Count("").ToSurql(), CountAll().ToSurql()},
+		{"Count field vs CountField", Count("active").ToSurql(), CountField("active").ToSurql()},
+		{"Sum vs MathSum", Sum("price").ToSurql(), MathSum("price").ToSurql()},
+		{"Avg vs MathMean", Avg("price").ToSurql(), MathMean("price").ToSurql()},
+		{"MinFn vs MathMin", MinFn("price").ToSurql(), MathMin("price").ToSurql()},
+		{"MaxFn vs MathMax", MaxFn("price").ToSurql(), MathMax("price").ToSurql()},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.got != tc.native {
+				t.Errorf("got %q, want %q", tc.got, tc.native)
+			}
+		})
+	}
+}
+
+func TestAggregateFunctions_InGroupedSelect(t *testing.T) {
+	q := Query{}.SelectAliased(map[string]types.Operator{
+		"total": Count(""),
+		"spent": Sum("price"),
+		"avg":   Avg("price"),
+		"lo":    MinFn("price"),
+		"hi":    MaxFn("price"),
+	})
+	q, err := q.FromTable("purchase")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := q.GroupAll().ToSurql()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "SELECT math::mean(price) AS avg, math::max(price) AS hi, " +
+		"math::min(price) AS lo, math::sum(price) AS spent, count() AS total " +
+		"FROM purchase GROUP ALL"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }
 
@@ -107,7 +178,7 @@ func TestFunc_AcceptsMixedArgs(t *testing.T) {
 }
 
 func TestAs_AliasesExpressions(t *testing.T) {
-	if got := As(Count(""), "total").ToSurql(); got != "COUNT(*) AS total" {
+	if got := As(Count(""), "total").ToSurql(); got != "count() AS total" {
 		t.Errorf("got %q", got)
 	}
 	inner := Concat(E(Field("first")), E(Field("last")))
