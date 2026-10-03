@@ -16,7 +16,7 @@ jobs:
   goreleaser:
     runs-on: [self-hosted, aur0]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
