@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.1] - 2026-10-03
 
 ### Fixed
 
@@ -31,6 +31,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `Count(f)` already parsed; it moves to the lowercase canonical spelling.
   Note that `count(f)` counts the rows where `f` is truthy, not merely
   non-null. Signatures are unchanged.
+
+### Changed
+
+- **`github.com/surrealdb/surrealdb.go` moves from v1.6.0 to v1.7.0.** The
+  module now requires the newer driver, so a consumer's build selects at
+  least v1.7.0.
 
 ## [0.5.0] - 2026-08-12
 
