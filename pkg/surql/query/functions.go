@@ -86,9 +86,10 @@ func StringConcat(args ...string) types.SurrealFn {
 // Count factories returning types.SurrealFn.
 //
 // The existing [Count] helper in expressions.go takes an optional field
-// name and returns Expression (`COUNT(*)` / `COUNT(id)`). CountAll and
-// CountIf provide SurrealDB-native lowercase `count()` / `count(expr)`
-// forms useful in aggregation queries.
+// name and returns Expression (`count()` / `count(id)`). CountAll,
+// CountField and CountIf render the same SurrealDB-native forms as
+// types.SurrealFn, so they compose with SelectExpr / SelectAliased in
+// aggregation queries.
 // ---------------------------------------------------------------------------
 
 // CountAll returns `count()` — the SurrealDB aggregation function with

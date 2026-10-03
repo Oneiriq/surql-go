@@ -91,10 +91,10 @@ func TestOrderBy_InvalidDirection(t *testing.T) {
 }
 
 func TestSelect_GroupBy(t *testing.T) {
-	q := mustFrom(t, []string{"status", "COUNT(*)"}, "user").
+	q := mustFrom(t, []string{"status", "count()"}, "user").
 		GroupBy("status")
 	got, _ := q.ToSurql()
-	if want := "SELECT status, COUNT(*) FROM user GROUP BY status"; got != want {
+	if want := "SELECT status, count() FROM user GROUP BY status"; got != want {
 		t.Errorf("got %q", got)
 	}
 }

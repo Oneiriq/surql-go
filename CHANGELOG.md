@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **The aggregate `Expression` helpers rendered SQL that SurrealDB cannot
+  parse.** `Count("")` emitted `COUNT(*)`, which fails with ``Unexpected
+  token `*`, expected an expression``, and `Sum` / `Avg` / `MinFn` / `MaxFn`
+  emitted `SUM(f)` / `AVG(f)` / `MIN(f)` / `MAX(f)`, each failing with
+  `Invalid function/constant path` (verified against SurrealDB 3.3.0). Any
+  statement that used them, including the documented
+  `As(Count(""), "total")`, was rejected before it ran. They now render
+  SurrealQL's own aggregates, the same output as `CountAll` / `CountField`
+  and the `Math*` helpers:
+
+  | Helper       | Before       | After            |
+  |--------------|--------------|------------------|
+  | `Count("")`  | `COUNT(*)`   | `count()`        |
+  | `Count(f)`   | `COUNT(f)`   | `count(f)`       |
+  | `Sum(f)`     | `SUM(f)`     | `math::sum(f)`   |
+  | `Avg(f)`     | `AVG(f)`     | `math::mean(f)`  |
+  | `MinFn(f)`   | `MIN(f)`     | `math::min(f)`   |
+  | `MaxFn(f)`   | `MAX(f)`     | `math::max(f)`   |
+
+  `Count(f)` already parsed; it moves to the lowercase canonical spelling.
+  Note that `count(f)` counts the rows where `f` is truthy, not merely
+  non-null. Signatures are unchanged.
+
 ## [0.5.0] - 2026-08-12
 
 ### Added

@@ -6,6 +6,7 @@ package query
 import (
 	"context"
 	"os"
+	"reflect"
 	"testing"
 	"time"
 
@@ -423,6 +424,110 @@ func TestIntegration_BuilderSelectExprGroupAllExecute(t *testing.T) {
 	if _, ok := row["count"]; !ok {
 		t.Errorf("missing count key: %+v", row)
 	}
+}
+
+// TestIntegration_ExpressionAggregates executes every Expression aggregate
+// helper under GROUP BY and GROUP ALL. Their earlier SQL spellings
+// (`COUNT(*)`, `SUM(f)`, `AVG(f)`, `MIN(f)`, `MAX(f)`) failed to parse, so
+// this pins both that the rendering is accepted and that it computes.
+func TestIntegration_ExpressionAggregates(t *testing.T) {
+	client, cleanup := newIntegrationClient(t)
+	defer cleanup()
+	cleanupTable(t, client, "surqlgo_expr_agg")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	seeds := []struct {
+		grp    string
+		price  int
+		active bool
+	}{
+		{"a", 10, true},
+		{"a", 20, false},
+		{"b", 60, true},
+	}
+	for _, s := range seeds {
+		if _, err := CreateRecord(ctx, client, "surqlgo_expr_agg", map[string]any{
+			"grp": s.grp, "price": s.price, "active": s.active,
+		}); err != nil {
+			t.Fatalf("seed %s/%d: %v", s.grp, s.price, err)
+		}
+	}
+
+	aggregates := map[string]types.Operator{
+		"total":  Count(""),
+		"active": Count("active"),
+		"spent":  Sum("price"),
+		"avg":    Avg("price"),
+		"lo":     MinFn("price"),
+		"hi":     MaxFn("price"),
+	}
+	type want struct{ total, active, spent, avg, lo, hi float64 }
+	check := func(t *testing.T, row map[string]any, w want) {
+		t.Helper()
+		for key, expected := range map[string]float64{
+			"total": w.total, "active": w.active, "spent": w.spent,
+			"avg": w.avg, "lo": w.lo, "hi": w.hi,
+		} {
+			if got := aggregateNumber(t, row, key); got != expected {
+				t.Errorf("%s = %v, want %v (row %+v)", key, got, expected, row)
+			}
+		}
+	}
+
+	t.Run("GROUP ALL", func(t *testing.T) {
+		rows, err := AggregateRecords(ctx, client, AggregateOpts{
+			Table:    "surqlgo_expr_agg",
+			Select:   aggregates,
+			GroupAll: true,
+		})
+		if err != nil {
+			t.Fatalf("AggregateRecords: %v", err)
+		}
+		if len(rows) != 1 {
+			t.Fatalf("want 1 row, got %d: %+v", len(rows), rows)
+		}
+		check(t, rows[0], want{total: 3, active: 2, spent: 90, avg: 30, lo: 10, hi: 60})
+	})
+
+	t.Run("GROUP BY", func(t *testing.T) {
+		rows, err := AggregateRecords(ctx, client, AggregateOpts{
+			Table:   "surqlgo_expr_agg",
+			Select:  aggregates,
+			GroupBy: []string{"grp"},
+			OrderBy: &OrderField{Field: "grp", Direction: "ASC"},
+		})
+		if err != nil {
+			t.Fatalf("AggregateRecords: %v", err)
+		}
+		if len(rows) != 2 {
+			t.Fatalf("want 2 rows, got %d: %+v", len(rows), rows)
+		}
+		check(t, rows[0], want{total: 2, active: 1, spent: 30, avg: 15, lo: 10, hi: 20})
+		check(t, rows[1], want{total: 1, active: 1, spent: 60, avg: 60, lo: 60, hi: 60})
+	})
+}
+
+// aggregateNumber reads a numeric aggregate column as float64, whichever
+// integer or float type the driver decoded it into.
+func aggregateNumber(t *testing.T, row map[string]any, key string) float64 {
+	t.Helper()
+	v, ok := row[key]
+	if !ok {
+		t.Fatalf("missing %q in %+v", key, row)
+	}
+	rv := reflect.ValueOf(v)
+	switch {
+	case rv.CanInt():
+		return float64(rv.Int())
+	case rv.CanUint():
+		return float64(rv.Uint())
+	case rv.CanFloat():
+		return rv.Float()
+	}
+	t.Fatalf("%s = %v (%T), want a number", key, v, v)
+	return 0
 }
 
 func TestIntegration_TypeThingTarget_Get(t *testing.T) {
