@@ -89,41 +89,37 @@ func ExecuteMigration(
 
 	start := time.Now()
 
+	// failed builds the status reported alongside an error. Keeping the
+	// composite literal out of the multi-value returns below also keeps
+	// them formatted identically by gofmt 1.26 and 1.27, which disagree on
+	// how to indent a literal that spans lines inside a return list.
+	failed := func(msg string) MigrationStatus {
+		return MigrationStatus{Migration: m, State: MigrationStateFailed, Error: msg}
+	}
+
 	tx, err := client.Begin(ctx)
 	if err != nil {
-		return MigrationStatus{
-				Migration: m,
-				State:     MigrationStateFailed,
-				Error:     err.Error(),
-			}, surqlerrors.Wrapf(
-				surqlerrors.ErrMigrationExecution, err,
-				"failed to begin transaction for migration %q", m.Version,
-			)
+		return failed(err.Error()), surqlerrors.Wrapf(
+			surqlerrors.ErrMigrationExecution, err,
+			"failed to begin transaction for migration %q", m.Version,
+		)
 	}
 
 	for i, stmt := range statements {
 		if _, execErr := tx.Execute(ctx, stmt); execErr != nil {
 			_ = tx.Rollback(ctx)
-			return MigrationStatus{
-					Migration: m,
-					State:     MigrationStateFailed,
-					Error:     fmt.Sprintf("statement %d: %v", i, execErr),
-				}, surqlerrors.Wrapf(
-					surqlerrors.ErrMigrationExecution, execErr,
-					"migration %q: failed to execute statement %d", m.Version, i,
-				)
+			return failed(fmt.Sprintf("statement %d: %v", i, execErr)), surqlerrors.Wrapf(
+				surqlerrors.ErrMigrationExecution, execErr,
+				"migration %q: failed to execute statement %d", m.Version, i,
+			)
 		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return MigrationStatus{
-				Migration: m,
-				State:     MigrationStateFailed,
-				Error:     err.Error(),
-			}, surqlerrors.Wrapf(
-				surqlerrors.ErrMigrationExecution, err,
-				"migration %q: commit failed", m.Version,
-			)
+		return failed(err.Error()), surqlerrors.Wrapf(
+			surqlerrors.ErrMigrationExecution, err,
+			"migration %q: commit failed", m.Version,
+		)
 	}
 
 	executionMs := time.Since(start).Milliseconds()
@@ -139,25 +135,17 @@ func ExecuteMigration(
 			ExecutionTimeMs: &executionMs,
 		}
 		if err := RecordMigration(ctx, client, entry); err != nil {
-			return MigrationStatus{
-					Migration: m,
-					State:     MigrationStateFailed,
-					Error:     err.Error(),
-				}, surqlerrors.Wrapf(
-					surqlerrors.ErrMigrationExecution, err,
-					"migration %q applied but history recording failed", m.Version,
-				)
+			return failed(err.Error()), surqlerrors.Wrapf(
+				surqlerrors.ErrMigrationExecution, err,
+				"migration %q applied but history recording failed", m.Version,
+			)
 		}
 	case MigrationDirectionDown:
 		if err := RemoveMigrationRecord(ctx, client, m.Version); err != nil {
-			return MigrationStatus{
-					Migration: m,
-					State:     MigrationStateFailed,
-					Error:     err.Error(),
-				}, surqlerrors.Wrapf(
-					surqlerrors.ErrMigrationExecution, err,
-					"migration %q rolled back but history removal failed", m.Version,
-				)
+			return failed(err.Error()), surqlerrors.Wrapf(
+				surqlerrors.ErrMigrationExecution, err,
+				"migration %q rolled back but history removal failed", m.Version,
+			)
 		}
 	}
 
